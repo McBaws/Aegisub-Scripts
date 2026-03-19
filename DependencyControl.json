@@ -1,0 +1,47 @@
+{
+  "dependencyControlFeedFormatVersion": "0.2.0",
+  "name": "McBaws's Automation Scripts",
+  "description": "Main repository for all of McBaws's automation scripts.",
+  "baseUrl": "https://github.com/McBaws/Aegisub-Scripts",
+  "fileBaseUrl": "https://raw.githubusercontent.com/McBaws/Aegisub-Scripts",
+  "url": "@{baseUrl}",
+  "maintainer": "McBaws",
+  "knownFeeds": {
+    "a-mo": "https://raw.githubusercontent.com/TypesettingTools/Aegisub-Motion/DepCtrl/DependencyControl.json"
+  },
+  "macros": {
+    "baws.PlainerText": {
+      "fileBaseUrl": "@{fileBaseUrl}/@{channel}/macros/@{namespace}",
+      "url": "@{baseUrl}#@{namespace}",
+      "author": "McBaws",
+      "name": "PlainerText",
+      "description": "Clean up and export script as plaintext",
+      "channels": {
+        "stable": {
+          "version": "1.0.0",
+          "released": "2026-03-19",
+          "default": true,
+          "files": [
+            {
+              "name": ".moon",
+              "url": "@{fileBaseUrl}@{fileName}",
+              "sha1": "11a6d459cc3cdf95b51131cfee72298bce4121c3"
+            }
+          ],
+          "requiredModules": [
+            {
+              "moduleName": "a-mo.ConfigHandler",
+              "name": "ConfigHandler",
+              "url": "https://github.com/TypesettingTools/Aegisub-Motion",
+              "version": "1.1.4",
+              "feed": "@{feed:a-mo}"
+            }
+          ]
+        }
+      },
+      "changelog": {
+        "1.0.0": ["Initial release"]
+      }
+    }
+  }
+}
