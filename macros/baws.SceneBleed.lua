@@ -115,7 +115,7 @@ local function process(subs, sel)
     local lines_edited = false
     for j, i in ipairs(sel) do
         local line = subs[i]
-        if line.class == "dialogue" then
+        if line.class == "dialogue" and not line.comment then
             if not (opts.skipMarked and line.effect:match(bleedString)) then
                 local start_frame = aegisub.frame_from_ms(line.start_time)
                 local end_frame = aegisub.frame_from_ms(line.end_time)
@@ -140,13 +140,13 @@ local function process(subs, sel)
                 -- clear past marks
                 if line.effect:match(bleedString) then
                     -- first get rid of extra info, if it exists
-                    if line.effect:match(bleedString .. " (") then
+                    if line.effect:match(bleedString .. " %(") then
                         line.effect = re.sub(line.effect, bleedString .. " \\(.*?\\)", bleedString)
                     end
 
                     -- then get rid of bleedstring itself
-                    line.effect:gsub("; " .. bleedString, "")
-                    line.effect:gsub(bleedString, "")
+                    line.effect = line.effect:gsub("; " .. bleedString, "")
+                    line.effect = line.effect:gsub(bleedString, "")
                 end
 
                 local infoSB = "start before, "
@@ -201,8 +201,26 @@ local function process(subs, sel)
     return sel
 end
 
+local function all_lines(subs)
+
+    local sel = {}
+    for i = 1, #subs do
+        local line = subs[i]
+        if line.class == "dialogue" then
+            sel[#sel + 1] = i
+        end
+    end
+
+    process(subs, sel)
+end
+    
+local function sel_lines(subs, sel)
+    process(subs, sel)
+end
+
 local macros = {
-    {"Detect", script_description, process},
+    {"Detect in Entire Script", script_description, all_lines},
+    {"Detect in Selected Lines", script_description, sel_lines},
     {"Setup Config", "Open configuration menu", show_config_dialog}
 }
 
