@@ -18,14 +18,14 @@
       "description": "Clean up and export script as plaintext",
       "channels": {
         "stable": {
-          "version": "1.0.0",
+          "version": "1.0.1",
           "released": "2026-03-19",
           "default": true,
           "files": [
             {
               "name": ".moon",
               "url": "@{fileBaseUrl}@{fileName}",
-              "sha1": "5e1f4b25b76f80f0a057382fc3f475463a2a7879"
+              "sha1": "4bedf5a90180393af72be798aa783cbb350892c0"
             }
           ],
           "requiredModules": [
@@ -40,7 +40,8 @@
         }
       },
       "changelog": {
-        "1.0.0": ["Initial release"]
+        "1.0.0": ["Initial release"],
+        "1.0.1": ["Fix line endings"]
       }
     }
   }
