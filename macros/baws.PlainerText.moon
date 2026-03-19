@@ -15,7 +15,7 @@
 export script_name = "PlainerText"
 export script_author = "McBaws"
 export script_description = "Clean up and export script as plaintext"
-export script_version = "1.0.0"
+export script_version = "1.0.1"
 export script_namespace = "baws.PlainerText"
 
 havedc, DependencyControl = pcall require, "l0.DependencyControl"
