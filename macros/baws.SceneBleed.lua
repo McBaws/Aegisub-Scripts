@@ -15,7 +15,7 @@
 script_name = "SceneBleed"
 script_description = "Detects scenebleeds and marks them with an effect"
 script_author = "McBaws"
-script_version = "0.0.1"
+script_version = "1.0.0"
 script_namespace = "baws.SceneBleed"
 
 local havedc, DependencyControl = pcall(require, "l0.DependencyControl")

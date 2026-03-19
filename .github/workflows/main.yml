@@ -1,11 +1,11 @@
 name: CI
 
 on:
-  # Triggers the workflow on pull request for the master branch
+  # Triggers the workflow on pull request for the main branch
   push:
-    branches: [master, stable]
+    branches: [main, stable]
   pull_request:
-    branches: [master]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
