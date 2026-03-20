@@ -15,7 +15,7 @@
 script_name = "SceneBleed"
 script_description = "Detects scenebleeds and marks them with an effect"
 script_author = "McBaws"
-script_version = "1.0.0"
+script_version = "1.1.0"
 script_namespace = "baws.SceneBleed"
 
 local havedc, DependencyControl = pcall(require, "l0.DependencyControl")
@@ -105,6 +105,8 @@ local function process(subs, sel)
     local threshEA = aegisub.frame_from_ms(opts.thresholdEndAfter)
     local bleedString = opts.bleedString
 
+    local max_thresh = math.max(threshSB, threshSA, threshEB, threshEA)
+
     local keyframes = aegisub.keyframes()
     if not keyframes or #keyframes == 0 then
         aegisub.log(2, "Warning: No keyframes found. Scenebleed detection requires video/keyframes to be loaded.\n")
@@ -120,22 +122,37 @@ local function process(subs, sel)
                 local start_frame = aegisub.frame_from_ms(line.start_time)
                 local end_frame = aegisub.frame_from_ms(line.end_time)
 
-                local bleedSB, bleedSA, bleedEB, bleedEA = false
+                local bleedSB, bleedSA, bleedEB, bleedEA = false, false, false, false
+                -- Track perfect snaps
+                local snapped_start, snapped_end = false, false
+
                 for _, frame in ipairs(keyframes) do
+                    -- Check if the line perfectly aligns with this keyframe
+                    if start_frame == frame then snapped_start = true end
+                    if end_frame == frame then snapped_end = true end
+
+                    -- Check for proximity to the keyframe
                     bleedSB = bleedSB or (start_frame < frame and start_frame >= frame - threshSB)
                     bleedSA = bleedSA or (start_frame > frame and start_frame < frame + threshSA)
                     bleedEB = bleedEB or (end_frame < frame and end_frame >= frame - threshEB)
                     bleedEA = bleedEA or (end_frame > frame and end_frame < frame + threshEA)
 
-                    if end_frame < frame - (threshEB * 2) then
+                    -- Safely break once the keyframe is out of the max threshold range
+                    if end_frame < frame - (max_thresh * 2) then
                         break
                     end
                 end
 
-                local is_bleed = false
-                if bleedSB or bleedSA or bleedEB or bleedEA then
-                    is_bleed = true
+                if snapped_start then
+                    bleedSB = false
+                    bleedSA = false
                 end
+                if snapped_end then
+                    bleedEB = false
+                    bleedEA = false
+                end
+
+                local is_bleed = bleedSB or bleedSA or bleedEB or bleedEA
 
                 -- clear past marks
                 if line.effect:match(bleedString) then
@@ -163,20 +180,14 @@ local function process(subs, sel)
 
                     if opts.extraInfo then
                         line.effect = line.effect .. " ("
-                        if bleedSB then
-                            line.effect = line.effect .. infoSB
-                        end
-                        if bleedSA then
-                            line.effect = line.effect .. infoSA
-                        end
-                        if bleedEB then
-                            line.effect = line.effect .. infoEB
-                        end
-                        if bleedEA then
-                            line.effect = line.effect .. infoEA
-                        end
+                        if bleedSB then line.effect = line.effect .. infoSB end
+                        if bleedSA then line.effect = line.effect .. infoSA end
+                        if bleedEB then line.effect = line.effect .. infoEB end
+                        if bleedEA then line.effect = line.effect .. infoEA end
+                        
                         -- remove final comma and space
                         line.effect = line.effect:sub(1, -3)
+
                         line.effect = line.effect .. ")"
                     end
 

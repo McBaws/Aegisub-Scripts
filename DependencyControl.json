@@ -52,14 +52,14 @@
       "description": "Detects scenebleeds and marks them with an effect",
       "channels": {
         "stable": {
-          "version": "1.0.0",
+          "version": "1.1.0",
           "released": "2026-03-19",
           "default": true,
           "files": [
             {
               "name": ".lua",
               "url": "@{fileBaseUrl}@{fileName}",
-              "sha1": "c5461c316783e7abc1163ad1eb2e83e1d7e2488b"
+              "sha1": "6efe1e30eb28d651cf1db3d46ee258882afca6e5"
             }
           ],
           "requiredModules": [
@@ -74,7 +74,8 @@
         }
       },
       "changelog": {
-        "1.0.0": ["Initial release"]
+        "1.0.0": ["Initial release"],
+        "1.1.0": ["Fix detection for tightly packed keyframes"]
       }
     }
   }
