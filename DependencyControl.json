@@ -59,7 +59,7 @@
             {
               "name": ".lua",
               "url": "@{fileBaseUrl}@{fileName}",
-              "sha1": "6efe1e30eb28d651cf1db3d46ee258882afca6e5"
+              "sha1": "c070c2c0c1ede5cf3ab674a7516b57e64578a991"
             }
           ],
           "requiredModules": [
@@ -76,6 +76,39 @@
       "changelog": {
         "1.0.0": ["Initial release"],
         "1.1.0": ["Fix detection for tightly packed keyframes"]
+      }
+    },
+    "baws.Smartify": {
+      "fileBaseUrl": "@{fileBaseUrl}/@{channel}/macros/@{namespace}",
+      "url": "@{baseUrl}#@{namespace}",
+      "author": "McBaws",
+      "name": "Smartify",
+      "description": "Change all your normal quotes, ellipses, and dashes into smart ones",
+      "channels": {
+        "stable": {
+          "version": "1.0.0",
+          "released": "2026-07-19",
+          "default": true,
+          "files": [
+            {
+              "name": ".moon",
+              "url": "@{fileBaseUrl}@{fileName}",
+              "sha1": "eaa07b0d131c5bc71b41a4ca023a8455108f4bc6"
+            }
+          ],
+          "requiredModules": [
+            {
+              "moduleName": "a-mo.ConfigHandler",
+              "name": "ConfigHandler",
+              "url": "https://github.com/TypesettingTools/Aegisub-Motion",
+              "version": "1.1.4",
+              "feed": "@{feed:a-mo}"
+            }
+          ]
+        }
+      },
+      "changelog": {
+        "1.0.0": ["Initial release"]
       }
     }
   }
