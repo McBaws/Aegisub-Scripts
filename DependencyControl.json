@@ -7,7 +7,8 @@
   "url": "@{baseUrl}",
   "maintainer": "McBaws",
   "knownFeeds": {
-    "a-mo": "https://raw.githubusercontent.com/TypesettingTools/Aegisub-Motion/DepCtrl/DependencyControl.json"
+    "a-mo": "https://raw.githubusercontent.com/TypesettingTools/Aegisub-Motion/DepCtrl/DependencyControl.json",
+    "petzku": "https://raw.githubusercontent.com/petzku/Aegisub-Scripts/stable/DependencyControl.json"
   },
   "macros": {
     "baws.PlainerText": {
@@ -93,7 +94,7 @@
             {
               "name": ".moon",
               "url": "@{fileBaseUrl}@{fileName}",
-              "sha1": "20058e263a86fddb61cb70c75dc7d1c7f5281741"
+              "sha1": "45446a7c5bf22e9a560b4b019eada4843e3f7c52"
             }
           ],
           "requiredModules": [
@@ -109,6 +110,46 @@
       },
       "changelog": {
         "1.0.0": ["Initial release"]
+      }
+    },
+    "baws.Encode": {
+      "fileBaseUrl": "@{fileBaseUrl}/@{channel}/macros/@{namespace}",
+      "url": "@{baseUrl}#@{namespace}",
+      "author": "McBaws",
+      "name": "Encode a clip, now with various new codecs and features.",
+      "description": "Create",
+      "channels": {
+        "stable": {
+          "version": "0.1.0",
+          "released": "2026-07-20",
+          "default": true,
+          "files": [
+            {
+              "name": ".lua",
+              "url": "@{fileBaseUrl}@{fileName}",
+              "sha1": "4420efd4d9e89c2d6c4ecc36f5a68183287a0770"
+            }
+          ],
+          "requiredModules": [
+            {
+              "moduleName": "a-mo.ConfigHandler",
+              "name": "ConfigHandler",
+              "url": "https://github.com/TypesettingTools/Aegisub-Motion",
+              "version": "1.1.4",
+              "feed": "@{feed:a-mo}"
+            },
+            {
+              "moduleName": "petzku.util",
+              "name": "petzkuLib",
+              "url": "https://github.com/petzku/Aegisub-Scripts",
+              "version": "0.5.2",
+              "feed": "@{feed:petzku}"
+            }
+          ]
+        }
+      },
+      "changelog": {
+        "0.1.0": ["Initial beta release"]
       }
     }
   }

@@ -17,7 +17,7 @@
 export script_name = "Smartify"
 export script_description = [[Change all your "normal" quotes, ellipses, and dashes into “smart” ones]]
 export script_author = "McBaws"
-export script_namespace = "McBaws.Smartify"
+export script_namespace = "baws.Smartify"
 export script_version = "1.0.0"
 
 havedc, DependencyControl = pcall require, "l0.DependencyControl"

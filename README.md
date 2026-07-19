@@ -8,6 +8,14 @@ Scripts I make will use [DependencyControl](https://github.com/TypesettingTools/
 
 ## Scripts
 
+### Encode
+
+Based on [EncodeClip](https://github.com/petzku/Aegisub-Scripts/blob/master/macros/petzku.EncodeClip.lua).
+
+My main motivation was having a script that quickly encoded a bunch of lines for use with aegisub motion. a-mo was too slow and petzku's version doesn't encode with a constant frame rate. This turned out to be because mpv is incapable of encoding in CFR for some ungodly reason. So we just remux with mkvmerge.
+
+Anyway, this script lets you set the desired bit depth, crf, fps, and encode with avc, avc-nvenc, hevc, and av1.
+
 ### PlainerText
 
 Based on [PlainText](https://github.com/petzku/Aegisub-Scripts/blob/master/macros/petzku.PlainText.moon) and [evadiff](https://github.com/Irrational-Sneed-Wizardry/evadiff).
