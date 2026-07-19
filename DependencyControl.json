@@ -59,7 +59,7 @@
             {
               "name": ".lua",
               "url": "@{fileBaseUrl}@{fileName}",
-              "sha1": "c070c2c0c1ede5cf3ab674a7516b57e64578a991"
+              "sha1": "6efe1e30eb28d651cf1db3d46ee258882afca6e5"
             }
           ],
           "requiredModules": [
@@ -93,7 +93,7 @@
             {
               "name": ".moon",
               "url": "@{fileBaseUrl}@{fileName}",
-              "sha1": "eaa07b0d131c5bc71b41a4ca023a8455108f4bc6"
+              "sha1": "20058e263a86fddb61cb70c75dc7d1c7f5281741"
             }
           ],
           "requiredModules": [
