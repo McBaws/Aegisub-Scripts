@@ -88,7 +88,7 @@
       "channels": {
         "stable": {
           "version": "1.0.0",
-          "released": "2026-07-19",
+          "released": "2026-07-20",
           "default": true,
           "files": [
             {
@@ -120,14 +120,14 @@
       "description": "Create",
       "channels": {
         "stable": {
-          "version": "0.1.0",
-          "released": "2026-07-20",
+          "version": "1.0.0",
+          "released": "2026-08-05",
           "default": true,
           "files": [
             {
               "name": ".lua",
               "url": "@{fileBaseUrl}@{fileName}",
-              "sha1": "4420efd4d9e89c2d6c4ecc36f5a68183287a0770"
+              "sha1": "8fde3e4c1ebd036b7ed60e36342b724fbdc89201"
             }
           ],
           "requiredModules": [
@@ -149,7 +149,8 @@
         }
       },
       "changelog": {
-        "0.1.0": ["Initial beta release"]
+        "0.1.0": ["Initial release"],
+        "1.0.0": ["Fix crash on import"]
       }
     }
   }

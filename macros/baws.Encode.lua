@@ -18,7 +18,7 @@ script_name = 'Encode'
 script_description = 'Encode various clips from the current selection'
 script_author = 'McBaws'
 script_namespace = "baws.Encode"
-script_version = '0.1.0'
+script_version = '1.0.0'
 
 local haveDepCtrl, DependencyControl, depctrl = pcall(require, "l0.DependencyControl")
 local ConfigHandler, config, petzku
@@ -75,7 +75,6 @@ local config_schema = {
 
 if haveDepCtrl then
     config = ConfigHandler(config_schema, depctrl.configFile, false, script_version, depctrl.configDir)
-    config:read()
 end
 
 local function get_config(section)
