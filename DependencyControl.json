@@ -120,14 +120,14 @@
       "description": "Create",
       "channels": {
         "stable": {
-          "version": "1.0.0",
+          "version": "1.0.1",
           "released": "2026-08-05",
           "default": true,
           "files": [
             {
               "name": ".lua",
               "url": "@{fileBaseUrl}@{fileName}",
-              "sha1": "8fde3e4c1ebd036b7ed60e36342b724fbdc89201"
+              "sha1": "0838473145451f568e974673496e0560a736c4b0"
             }
           ],
           "requiredModules": [
@@ -150,7 +150,8 @@
       },
       "changelog": {
         "0.1.0": ["Initial release"],
-        "1.0.0": ["Fix crash on import"]
+        "1.0.0": ["Fix crash on import"],
+        "1.0.1": ["Fix config and mkvmerge args"]
       }
     }
   }

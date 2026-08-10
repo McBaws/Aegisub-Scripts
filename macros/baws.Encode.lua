@@ -18,7 +18,7 @@ script_name = 'Encode'
 script_description = 'Encode various clips from the current selection'
 script_author = 'McBaws'
 script_namespace = "baws.Encode"
-script_version = '1.0.0'
+script_version = '1.0.1'
 
 local haveDepCtrl, DependencyControl, depctrl = pcall(require, "l0.DependencyControl")
 local ConfigHandler, config, petzku
@@ -344,8 +344,8 @@ local function make_clip(subs, t1, t2, gui, cfg, src_fps)
     local outfile = string.format("%s%s%s.%s", base_name, tags, suffix, ext)
     local outfile_temp = string.format("%s%s%s_TEMP.%s", base_name, tags, suffix, ext)
 
-    local do_fps_remux = use_source_fps or cfg.force_fps ~= "-1" and cfg.extension == "mkv"
-    local target_fps = use_source_fps and src_fps or cfg.force_fps
+    local do_fps_remux = (cfg.use_source_fps or cfg.force_fps ~= "-1") and cfg.extension == "mkv"
+    local target_fps = cfg.use_source_fps and src_fps or cfg.force_fps
 
     local video_opts = {}
     local audio_opts = {}
@@ -474,7 +474,7 @@ local function make_clip(subs, t1, t2, gui, cfg, src_fps)
     end
 
     if do_fps_remux then
-        run_cmd(string.format('%s --output "%s" --default-duration 1:%s "%s"', get_mkvmerge(cfg.mkvmerge_exe), outfile, get_fps_label(target_fps), outfile_temp))
+        run_cmd(string.format('%s --output "%s" --default-duration 0:%s "%s"', get_mkvmerge(cfg.mkvmerge_exe), outfile, get_fps_label(target_fps), outfile_temp))
         
         local success, reason = os.remove(outfile_temp)
         if success then
