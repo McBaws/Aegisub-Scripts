@@ -116,8 +116,8 @@
       "fileBaseUrl": "@{fileBaseUrl}/@{channel}/macros/@{namespace}",
       "url": "@{baseUrl}#@{namespace}",
       "author": "McBaws",
-      "name": "Encode a clip, now with various new codecs and features.",
-      "description": "Create",
+      "name": "Encode",
+      "description": "Create a clip, now with various new codecs and features.",
       "channels": {
         "stable": {
           "version": "1.0.1",
