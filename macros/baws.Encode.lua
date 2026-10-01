@@ -51,7 +51,7 @@ local config_schema = {
     video = {
         audio = {class="checkbox", value=true, config=true},
         subs = {class="checkbox", value=true, config=true},
-        hardsub = {class="checkbox", value=false, config=true},
+        sub_mode = {class="dropdown", value="Softsub", config=true},
         codec = {class="dropdown", value="x264 (AVC)", config=true},
         crf = {class="floatedit", value=-1, config=true},
         target_kb = {class="intedit", value=0, config=true},
@@ -59,11 +59,16 @@ local config_schema = {
         bitdepth = {class="dropdown", value="Source", config=true},
         fps = {class="edit", value="", config=true},
         audio_codec = {class="dropdown", value="Opus", config=true},
-        audio_bitrate = {class="intedit", value=192, config=true}
+        audio_bitrate = {class="intedit", value=192, config=true},
+        use_aid = {class="checkbox", value=false, config=true},
+        aid = {class="intedit", value=1, config=true},
+        square = {class="checkbox", value=false, config=true}
     },
     audio = {
         audio_codec = {class="dropdown", value="Opus", config=true},
-        audio_bitrate = {class="intedit", value=192, config=true}
+        audio_bitrate = {class="intedit", value=192, config=true},
+        use_aid = {class="checkbox", value=false, config=true},
+        aid = {class="intedit", value=1, config=true}
     },
     images = {
         image_format = {class="dropdown", value="png", config=true},
@@ -82,13 +87,22 @@ local config_schema = {
         indexer = {class="dropdown", value="Auto", config=true},
         output_path = {class="edit", value="?script", config=true},
         filename = {class="edit", value="$video$ [$sframe$-$eframe$]", config=true},
-        use_aid = {class="checkbox", value=false, config=true},
-        aid = {class="intedit", value=1, config=true},
-        force_square_pixels = {class="checkbox", value=false, config=true},
         keep_track_names = {class="checkbox", value=true, config=true},
         name_subs_after_script = {class="checkbox", value=true, config=true}
     }
 }
+
+local DEFAULTS = {}
+for section, entries in pairs(config_schema) do
+    DEFAULTS[section] = {}
+    for k, v in pairs(entries) do DEFAULTS[section][k] = v.value end
+end
+
+local function defaults(section)
+    local c = {}
+    for k, v in pairs(DEFAULTS[section]) do c[k] = v end
+    return c
+end
 
 if haveDepCtrl then
     config = ConfigHandler(config_schema, depctrl.configFile, false, script_version, depctrl.configDir)
@@ -462,15 +476,15 @@ Indexes are kept in Aegisub's vscache folder.]] },
         { class='edit', name='filename', value=c.filename, x=1, y=11, width=3, hint=token_help() },
         { class='label', label='Preview:', x=0, y=12 },
         { class='label', label=preview_name(subs, sel, c.filename), x=1, y=12, width=3 },
-        { class='checkbox', name='use_aid', label='Force audio track:', value=c.use_aid, x=0, y=13, hint='Otherwise the first audio track is used.' },
-        { class='intedit', name='aid', value=c.aid, x=1, y=13, min=1, hint='Counting audio tracks only, starting from 1.' },
-        { class='checkbox', name='force_square_pixels', label='Force square pixels', value=c.force_square_pixels, x=0, y=14, width=4, hint='Resizes anamorphic sources to 1:1 SAR.' },
         { class='checkbox', name='keep_track_names', label='Copy track names from the source', value=c.keep_track_names, x=0, y=15, width=4, hint='Gives the video and audio tracks the same names as in the source file.\nLanguages are always copied.' },
         { class='checkbox', name='name_subs_after_script', label='Name the softsub track after the script', value=c.name_subs_after_script, x=0, y=16, width=4, hint='Uses the subtitle file name (without extension). Otherwise the track is left unnamed.' },
     }
-    local btn, result = aegisub.dialog.display(d, {"Save", "Preview Filename", "Cancel"}, {ok="Save", cancel="Cancel"})
+    local btn, result = aegisub.dialog.display(d, {"Save", "Preview Filename", "Reset", "Cancel"}, {ok="Save", cancel="Cancel"})
     if btn == "Save" then
         update_config("main", result)
+    elseif btn == "Reset" then
+        -- only fills the dialog in, nothing is saved until Save
+        return show_config_dialog(subs, sel, defaults("main"))
     elseif btn == "Preview Filename" then
         -- reopen with what they typed so the preview label updates
         return show_config_dialog(subs, sel, result)
@@ -486,9 +500,14 @@ end
 local function mode_page(section, build, validate)
     local values = get_config(section)
     while true do
-        local btn, result = aegisub.dialog.display(build(values), {"Encode", "Encode Each Line", "Cancel"}, {ok="Encode", cancel="Cancel"})
+        local btn, result = aegisub.dialog.display(build(values), {"Encode", "Encode Each Line", "Reset", "Cancel"}, {ok="Encode", cancel="Cancel"})
         if not btn or btn == "Cancel" then return nil end
         values = result
+        if btn == "Reset" then
+            -- only fills the dialog in, it gets saved once you encode
+            values = defaults(section)
+            goto continue
+        end
         local err = validate and validate(result)
         if err then
             message(err)
@@ -496,32 +515,38 @@ local function mode_page(section, build, validate)
             update_config(section, result)
             return btn, result
         end
+        ::continue::
     end
 end
 
 local function video_page(subs, sel)
     local build = function(v)
         if not list_has(VIDEO_CODECS, v.codec) then v.codec = VIDEO_CODECS[1] end
+        if v.sub_mode ~= "Hardsub" then v.sub_mode = "Softsub" end
         return {
             { class='checkbox', name='audio', label='Include audio', value=v.audio, x=0, y=0, width=2 },
             { class='checkbox', name='subs', label='Include subtitles', value=v.subs, x=0, y=1, width=2, hint='Softsubs in mkv, burned in for mp4/webm' },
-            { class='checkbox', name='hardsub', label='Hardsub subtitles', value=v.hardsub, x=0, y=2, width=2, hint='Burn subs in even when the format could take softsubs' },
-            { class='label', label='Video codec:', x=0, y=3 },
-            { class='dropdown', name='codec', items=VIDEO_CODECS, value=v.codec, x=1, y=3, hint='MP4 and WebM also decide the audio codec' },
-            { class='label', label='CRF (-1 = default):', x=0, y=4 },
-            { class='floatedit', name='crf', value=v.crf, x=1, y=4, hint='Sets cq for NVENC' },
-            { class='label', label='2-pass filesize (KB):', x=0, y=5 },
-            { class='intedit', name='target_kb', value=v.target_kb, x=1, y=5, min=0, hint='0 = off. Anything above 0 encodes to that size instead of using CRF.' },
-            { class='label', label='Height (0 = source):', x=0, y=6 },
-            { class='intedit', name='height', value=v.height, x=1, y=6, min=0 },
-            { class='label', label='Bit depth:', x=0, y=7 },
-            { class='dropdown', name='bitdepth', items={"Source", "8", "10", "12"}, value=v.bitdepth, x=1, y=7 },
-            { class='label', label='Assert FPS:', x=0, y=8 },
-            { class='edit', name='fps', value=v.fps, x=1, y=8, hint='A fraction like 24000/1001. Empty = source fps. Relabels the rate, frames are never dropped or duplicated.' },
-            { class='label', label='Audio codec:', x=0, y=9 },
-            { class='dropdown', name='audio_codec', items=AUDIO_CODECS, value=v.audio_codec, x=1, y=9, hint='Ignored for MP4 (AAC) and WebM (Opus)' },
-            { class='label', label='Audio bitrate (kbps):', x=0, y=10 },
-            { class='intedit', name='audio_bitrate', value=v.audio_bitrate, x=1, y=10, min=8, hint='Ignored for FLAC' },
+            { class='label', label='Video codec:', x=0, y=2 },
+            { class='dropdown', name='codec', items=VIDEO_CODECS, value=v.codec, x=1, y=2, hint='MP4 and WebM also decide the audio codec' },
+            { class='label', label='CRF (-1 = default):', x=0, y=3 },
+            { class='floatedit', name='crf', value=v.crf, x=1, y=3, hint='Sets cq for NVENC' },
+            { class='label', label='2-pass filesize (KB):', x=0, y=4 },
+            { class='intedit', name='target_kb', value=v.target_kb, x=1, y=4, min=0, hint='0 = off. Anything above 0 encodes to that size instead of using CRF.' },
+            { class='label', label='Height (0 = source):', x=0, y=5 },
+            { class='intedit', name='height', value=v.height, x=1, y=5, min=0 },
+            { class='label', label='Bit depth:', x=0, y=6 },
+            { class='dropdown', name='bitdepth', items={"Source", "8", "10", "12"}, value=v.bitdepth, x=1, y=6 },
+            { class='label', label='Assert FPS:', x=0, y=7 },
+            { class='edit', name='fps', value=v.fps, x=1, y=7, hint='A fraction like 24000/1001. Empty = source fps. Relabels the rate, frames are never dropped or duplicated.' },
+            { class='label', label='Audio codec:', x=0, y=8 },
+            { class='dropdown', name='audio_codec', items=AUDIO_CODECS, value=v.audio_codec, x=1, y=8, hint='Ignored for MP4 (AAC) and WebM (Opus)' },
+            { class='label', label='Audio bitrate (kbps):', x=0, y=9 },
+            { class='intedit', name='audio_bitrate', value=v.audio_bitrate, x=1, y=9, min=8, hint='Ignored for FLAC' },
+            { class='label', label='Subtitles:', x=0, y=10 },
+            { class='dropdown', name='sub_mode', items={"Softsub", "Hardsub"}, value=v.sub_mode, x=1, y=10, hint='Only used when "Include subtitles" is ticked. MP4 and WebM can only hardsub.' },
+            { class='checkbox', name='use_aid', label='Force audio track:', value=v.use_aid, x=0, y=11, hint='Otherwise the first audio track is used.' },
+            { class='intedit', name='aid', value=v.aid, x=1, y=11, min=1, hint='Counting audio tracks only, starting from 1.' },
+            { class='checkbox', name='square', label='Force square pixels', value=v.square, x=0, y=12, width=2, hint='Resizes anamorphic sources to 1:1 SAR.' },
         }
     end
     local validate = function(v)
@@ -534,9 +559,10 @@ local function video_page(subs, sel)
     local btn, v = mode_page("video", build, validate)
     if not btn then return end
     local opts = {
-        audio = v.audio, subs_on = v.subs, hardsub = v.hardsub, codec = v.codec, crf = v.crf,
+        audio = v.audio, subs_on = v.subs, hardsub = v.sub_mode == "Hardsub", codec = v.codec, crf = v.crf,
         target_kb = v.target_kb, height = v.height, bitdepth = v.bitdepth, fps = v.fps,
-        audio_codec = v.audio_codec, audio_bitrate = v.audio_bitrate
+        audio_codec = v.audio_codec, audio_bitrate = v.audio_bitrate,
+        use_aid = v.use_aid, aid = v.aid, square = v.square
     }
     do_encode(subs, sel, "video", opts, btn == "Encode Each Line")
 end
@@ -548,11 +574,13 @@ local function audio_page(subs, sel)
             { class='dropdown', name='audio_codec', items=AUDIO_CODECS, value=v.audio_codec, x=1, y=0 },
             { class='label', label='Bitrate (kbps):', x=0, y=1 },
             { class='intedit', name='audio_bitrate', value=v.audio_bitrate, x=1, y=1, min=8, hint='Ignored for FLAC' },
+            { class='checkbox', name='use_aid', label='Force audio track:', value=v.use_aid, x=0, y=2, hint='Otherwise the first audio track is used.' },
+            { class='intedit', name='aid', value=v.aid, x=1, y=2, min=1, hint='Counting audio tracks only, starting from 1.' },
         }
     end
     local btn, v = mode_page("audio", build)
     if not btn then return end
-    do_encode(subs, sel, "audio", {audio_codec = v.audio_codec, audio_bitrate = v.audio_bitrate}, btn == "Encode Each Line")
+    do_encode(subs, sel, "audio", {audio_codec = v.audio_codec, audio_bitrate = v.audio_bitrate, use_aid = v.use_aid, aid = v.aid}, btn == "Encode Each Line")
 end
 
 local function images_page(subs, sel)

@@ -492,7 +492,8 @@ def load_audio(job, rep):
         return None
     need_plugin("bs", "BestSource", "vapoursynth-bestsource")
     s = job["settings"]
-    track = -int(s["aid"]) if s["use_aid"] else -1
+    o = job["opts"]
+    track = -int(o.get("aid", 1)) if o.get("use_aid") else -1
     try:
         # cachepath keeps the index in vscache instead of bestsource's default appdata folder
         with bs_progress(rep, "Loading audio (indexes on first use)"):
@@ -918,7 +919,8 @@ def source_track_info(job, tools):
     asrc = job.get("audio_file") or video
     if not asrc.startswith("?dummy") and not asrc.startswith("dummy-audio"):
         auds = [st for st in probe_streams(asrc, tools) if st.get("codec_type") == "audio"]
-        n = int(job["settings"]["aid"]) - 1 if job["settings"]["use_aid"] else 0
+        o = job["opts"]
+        n = int(o.get("aid", 1)) - 1 if o.get("use_aid") else 0
         info["audio"] = track_info(auds[n] if 0 <= n < len(auds) else None)
     if not job["settings"].get("keep_track_names", True):
         # keep the languages, drop the names
@@ -1104,7 +1106,7 @@ def run(job, rep):
             clip = add_hardsubs(clip, job["subfile"])
 
         if mode == "images":
-            clip = scale(clip, o.get("height", 0), s["force_square_pixels"], rep)
+            clip = scale(clip, o.get("height", 0), False, rep)
             rep.total = sum(r["end"] - r["first"] for r in ranges)
             for rng in ranges:
                 current = rng["outdir"]
@@ -1118,7 +1120,7 @@ def run(job, rep):
         if not compat and not tools["mkvmerge"]:
             raise JobError("mkvmerge not found, it's needed for mkv output. Set its path in Edit Config.")
         src_bits = clip.format.bits_per_sample if clip.format.sample_type == vs.INTEGER else 10
-        clip = scale(clip, o["height"], s["force_square_pixels"], rep)
+        clip = scale(clip, o["height"], o.get("square", False), rep)
         clip = to_encode_format(clip, o["bitdepth"], src_bits, max_bits, compat, rep)
 
         if o["fps"].strip():
