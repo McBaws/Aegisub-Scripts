@@ -183,23 +183,21 @@ TOOL_KEYS = {
 
 
 def setup_tools(settings):
-    found = {}
+    import muxtools as mt
     for name, key in TOOL_KEYS.items():
         p = (settings.get(key) or "").strip().strip('"')
         if p:
             if not os.path.isfile(p):
                 raise JobError(f"{name} path in the config doesn't exist: {p}")
-            # muxtools reads these env vars instead of PATH
+            # muxtools checks these env vars before its managed binaries and PATH
             os.environ[f"vof_exe_{name.lower()}"] = p
-            found[name] = p
-        else:
-            found[name] = shutil.which(name)
-    ff = found["ffmpeg"]
+    ff = os.environ.get("vof_exe_ffmpeg")
     if ff:
         probe = os.path.join(os.path.dirname(ff), "ffprobe" + (".exe" if os.name == "nt" else ""))
         if os.path.isfile(probe):
             os.environ["vof_exe_ffprobe"] = probe
-    return found
+    # same lookup muxtools uses: config path, then managed binaries, then PATH. never downloads
+    return {name: mt.get_executable(name, can_error=False) for name in TOOL_KEYS}
 
 
 def need_ffmpeg(tools):
@@ -453,22 +451,28 @@ def load_video(job, rep):
     os.makedirs(vscache, exist_ok=True)
     indexer = job["settings"]["indexer"]
 
-    if indexer == "FFMS2":
+    # Auto and LWI reuse aegisub's lwi when there is one. if not, Auto makes an ffindex and LWI makes an lwi
+    if indexer in ("Auto", "LWI"):
         lwi = find_aegisub_lwi(job)
-        if lwi and hasattr(core, "lsmas"):
+        if lwi:
+            need_plugin("lsmas", "LSMASH", "vapoursynth-lsmas")
             need_param("lsmas", "LWLibavSource", "cachefile", "lsmas")
             rep.log(f"Reusing Aegisub's lwi index: {os.path.basename(lwi)}")
             return core.lsmas.LWLibavSource(source=video, cachefile=lwi), "LSMASH (Aegisub's index)"
+        indexer = "FFMS2" if indexer == "Auto" else "LWI"
+
+    if indexer == "FFMS2":
         need_plugin("ffms2", "FFMS2", "vapoursynth-ffms2")
         cache = os.path.join(vscache, vssource_cache_name(video, ".ffindex"))
         if not os.path.exists(cache):
             index_in_subprocess("ffms2", video, cache, rep, "Indexing with FFMS2 (one-off per file)")
         return core.ffms2.Source(source=video, cachefile=cache), "FFMS2"
 
-    if indexer == "LSMASH":
+    if indexer == "LWI":
         need_plugin("lsmas", "LSMASH", "vapoursynth-lsmas")
         need_param("lsmas", "LWLibavSource", "cachefile", "lsmas")
-        cache = find_aegisub_lwi(job) or os.path.join(vscache, lwi_cache_name(video_name_candidates(job)[0]))
+        # aegisub's naming, so aegisub's vs provider can pick it up too
+        cache = os.path.join(vscache, lwi_cache_name(video_name_candidates(job)[0]))
         if not os.path.exists(cache):
             index_in_subprocess("lsmas", video, cache, rep, "Indexing with LSMASH (one-off per file)")
         return core.lsmas.LWLibavSource(source=video, cachefile=cache), "LSMASH"
@@ -603,12 +607,17 @@ def scale(clip, height, square, rep):
         w = even(w * height / h)
         h = height
     if (w, h) != (clip.width, clip.height):
-        if placebo_works():
-            from vskernels import EwaLanczosSharp
-            clip = EwaLanczosSharp().scale(clip, w, h)
+        if w * h > clip.width * clip.height:
+            if placebo_works():
+                from vskernels import EwaLanczos
+                clip = EwaLanczos().scale(clip, w, h)
+            else:
+                rep.warn("vs-placebo isn't usable here (not installed, or no Vulkan GPU), upscaling with Lanczos (3 taps) instead")
+                from vskernels import Lanczos
+                clip = Lanczos(taps=3).scale(clip, w, h)
         else:
-            rep.warn("vs-placebo isn't usable here (not installed, or no Vulkan GPU), scaling with Spline36 instead")
-            clip = core.resize.Spline36(clip, w, h)
+            from vskernels import Hermite
+            clip = Hermite().scale(clip, w, h)
     # resize nudges the SAR to cover width rounding, we already picked the width to keep the aspect so undo that
     keep = Fraction(1) if square else sar
     return clip.std.SetFrameProps(_SARNum=keep.numerator, _SARDen=keep.denominator)
@@ -868,40 +877,19 @@ def softsubs(job, rng, src_fps, t0, t1, rep):
 
 # ---- muxing ----
 
-def mux_mkv(video, needs_fps, fps, audio, sub, fonts, out, ws, tools, rep):
-    if tools["mkvmerge"]:
-        import muxtools as mt
-        rep.task("Muxing")
-        vargs = ["--default-duration", f"0:{fps.numerator}/{fps.denominator}p"] if needs_fps else []
-        tracks = [mt.VideoFile(video).to_track("", "und", args=vargs)]
-        if audio:
-            tracks.append(mt.AudioFile(audio).to_track("", "und"))
-        if sub:
-            tracks.append(sub.to_track("", "und", True, False))
-            tracks += fonts
-        mt.mux(*tracks, outfile=out, quiet=True)
-        return
-
-    rep.warn("mkvmerge not found, muxing with ffmpeg instead")
-    ffmpeg = need_ffmpeg(tools)
-    cmd = [ffmpeg, "-hide_banner", "-nostats", "-loglevel", "warning", "-y"]
-    if needs_fps:
-        cmd += ["-r", f"{fps.numerator}/{fps.denominator}"]
-    cmd += ["-i", video]
-    maps = ["-map", "0:v:0"]
-    n = 1
+def mux_mkv(video, audio, sub, fonts, out, tools, rep):
+    import muxtools as mt
+    if not tools["mkvmerge"]:
+        raise JobError("mkvmerge not found, it's needed for mkv output. Set its path in Edit Config.")
+    rep.task("Muxing")
+    # no fps args here on purpose, the encoders already wrote the rate vapoursynth gave them into the stream
+    tracks = [mt.VideoFile(video).to_track("", "und")]
     if audio:
-        cmd += ["-i", audio]
-        maps += ["-map", f"{n}:a:0"]
-        n += 1
+        tracks.append(mt.AudioFile(audio).to_track("", "und"))
     if sub:
-        cmd += ["-i", str(sub.file)]
-        maps += ["-map", f"{n}:s:0"]
-        for i, f in enumerate(fonts):
-            cmd += ["-attach", str(f.file)]
-            maps += [f"-metadata:s:t:{i}", "mimetype=application/x-truetype-font"]
-    cmd += maps + ["-c", "copy", out]
-    run_ffmpeg(cmd, ws.dirs["ffmpeg"], None, rep, os.path.join(ws.dirs["ffmpeg"], "mux.log"))
+        tracks.append(sub.to_track("", "und", True, False))
+        tracks += fonts
+    mt.mux(*tracks, outfile=out, quiet=True)
 
 
 # ---- modes ----
@@ -958,13 +946,11 @@ def do_video_range(clip, src, anode, rng, job, ws, tools, rep):
     rep.task(f"Encoding {os.path.basename(out)}")
     if exe and tools[exe]:
         video = muxtools_encode(seg, exe, crf, vb, ws, rep)
-        needs_fps = os.path.splitext(video)[1].lower() in (".264", ".265", ".h264", ".hevc")
     else:
         if exe:
             rep.log(f"{exe} not found, encoding with ffmpeg's {enc}")
         video = ffmpeg_encode(seg, enc, crf, vb, os.path.join(ws.dirs["ffmpeg"], "video.mkv"), ws, tools, rep)
-        needs_fps = False
-    mux_mkv(video, needs_fps, fps, audio, sub, fonts, out, ws, tools, rep)
+    mux_mkv(video, audio, sub, fonts, out, tools, rep)
 
 
 def video_budget(target_kb, other_kbit, duration, rep):
@@ -1065,6 +1051,8 @@ def run(job, rep):
 
         exe, enc, max_bits, _ = VIDEO_CODECS[o["codec"]]
         compat = o["codec"] in ("MP4 (H.264 + AAC)", "WebM (VP9 + Opus)")
+        if not compat and not tools["mkvmerge"]:
+            raise JobError("mkvmerge not found, it's needed for mkv output. Set its path in Edit Config.")
         clip = scale(clip, o["height"], s["force_square_pixels"], rep)
         clip = to_encode_format(clip, o["bitdepth"], max_bits, compat, rep)
 
@@ -1106,8 +1094,8 @@ def run(job, rep):
 def setup_muxtools(ws):
     import muxtools as mt
     wd = ws.dirs["muxtools"]
-    mt.Setup("clip", config_file="", work_dir=wd, out_dir=wd, allow_binary_download=False,
-             show_name="", out_name="clip", mkv_title_naming="", clean_work_dirs=False, debug=False)
+    mt.Setup("clip", work_dir=wd, out_dir=wd, show_name="", out_name="clip", mkv_title_naming="",
+             clean_work_dirs=False, debug=False)
 
 
 def main():

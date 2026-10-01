@@ -44,6 +44,7 @@ local pathsep = is_windows and "\\" or "/"
 local VIDEO_CODECS = {"x264 (AVC)", "x265 (HEVC)", "SVT-AV1 (AV1)", "NVENC (AVC)", "MP4 (H.264 + AAC)", "WebM (VP9 + Opus)"}
 local AUDIO_CODECS = {"Opus", "FLAC", "AAC"}
 local AUDIO_EXT = {Opus="opus", FLAC="flac", AAC="m4a"}
+local INDEXERS = {"Auto", "LWI", "FFMS2", "BestSource"}
 
 -- ConfigHandler requires the schema to be structured exactly like Aegisub dialog elements
 local config_schema = {
@@ -78,7 +79,7 @@ local config_schema = {
         opusenc_exe = {class="edit", value="", config=true},
         flac_exe = {class="edit", value="", config=true},
         qaac_exe = {class="edit", value="", config=true},
-        indexer = {class="dropdown", value="FFMS2", config=true},
+        indexer = {class="dropdown", value="Auto", config=true},
         output_path = {class="edit", value="?script", config=true},
         naming_base = {class="dropdown", value="Video", config=true},
         use_frames = {class="checkbox", value=true, config=true},
@@ -375,7 +376,11 @@ end
 
 local function show_config_dialog()
     local c = get_config("main")
-    local exe_hint = "Leave blank to search PATH."
+    -- older configs might have an indexer name that doesn't exist anymore
+    local known = false
+    for _, x in ipairs(INDEXERS) do if x == c.indexer then known = true end end
+    if not known then c.indexer = "Auto" end
+    local exe_hint = "Leave blank to let muxtools find it (its managed binaries, then PATH)."
     local d = {
         { class='label', label='Python:', x=0, y=0 },
         { class='edit', name='python_exe', value=c.python_exe, x=1, y=0, width=3, hint=[[Python that has vapoursynth, vsjetpack and vsmuxtools installed.
@@ -383,7 +388,7 @@ Leave blank to use python from PATH.]] },
         { class='label', label='ffmpeg:', x=0, y=1 },
         { class='edit', name='ffmpeg_exe', value=c.ffmpeg_exe, x=1, y=1, width=3, hint=exe_hint .. "\nRequired. ffprobe is picked up from the same folder." },
         { class='label', label='mkvmerge:', x=0, y=2 },
-        { class='edit', name='mkvmerge_exe', value=c.mkvmerge_exe, x=1, y=2, width=3, hint=exe_hint .. "\nOptional, ffmpeg muxes if it's missing." },
+        { class='edit', name='mkvmerge_exe', value=c.mkvmerge_exe, x=1, y=2, width=3, hint=exe_hint .. "\nNeeded for mkv output (muxing goes through muxtools)." },
         { class='label', label='x264:', x=0, y=3 },
         { class='edit', name='x264_exe', value=c.x264_exe, x=1, y=3, width=3, hint=exe_hint .. "\nOptional, ffmpeg's libx264 is used if it's missing." },
         { class='label', label='x265:', x=0, y=4 },
@@ -398,7 +403,10 @@ Leave blank to use python from PATH.]] },
         { class='edit', name='qaac_exe', value=c.qaac_exe, x=1, y=8, width=3, hint=exe_hint .. "\nOptional, ffmpeg's AAC is used if it's missing." },
 
         { class='label', label='Video Indexer:', x=0, y=9 },
-        { class='dropdown', name='indexer', items={"FFMS2", "BestSource", "LSMASH"}, value=c.indexer, x=1, y=9, width=3, hint=[[FFMS2 reuses Aegisub's lwi index from vscache if there is one, otherwise makes an ffindex there.]] },
+        { class='dropdown', name='indexer', items=INDEXERS, value=c.indexer, x=1, y=9, width=3, hint=[[Auto: reuse Aegisub's lwi index if there is one, otherwise make an ffindex.
+LWI: reuse Aegisub's lwi index if there is one, otherwise make an lwi.
+FFMS2 / BestSource: always use that indexer.
+Indexes are kept in Aegisub's vscache folder.]] },
         { class='label', label='Output Path:', x=0, y=10 },
         { class='edit', name='output_path', value=c.output_path, x=1, y=10, width=3, hint='Use ?script for the subtitle folder' },
         { class='label', label='Base Filename:', x=0, y=11 },
