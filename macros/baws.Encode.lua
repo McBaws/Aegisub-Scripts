@@ -84,7 +84,9 @@ local config_schema = {
         filename = {class="edit", value="$video$ [$sframe$-$eframe$]", config=true},
         use_aid = {class="checkbox", value=false, config=true},
         aid = {class="intedit", value=1, config=true},
-        force_square_pixels = {class="checkbox", value=false, config=true}
+        force_square_pixels = {class="checkbox", value=false, config=true},
+        keep_track_names = {class="checkbox", value=true, config=true},
+        name_subs_after_script = {class="checkbox", value=true, config=true}
     }
 }
 
@@ -463,11 +465,13 @@ Indexes are kept in Aegisub's vscache folder.]] },
         { class='checkbox', name='use_aid', label='Force audio track:', value=c.use_aid, x=0, y=13, hint='Otherwise the first audio track is used.' },
         { class='intedit', name='aid', value=c.aid, x=1, y=13, min=1, hint='Counting audio tracks only, starting from 1.' },
         { class='checkbox', name='force_square_pixels', label='Force square pixels', value=c.force_square_pixels, x=0, y=14, width=4, hint='Resizes anamorphic sources to 1:1 SAR.' },
+        { class='checkbox', name='keep_track_names', label='Copy track names from the source', value=c.keep_track_names, x=0, y=15, width=4, hint='Gives the video and audio tracks the same names as in the source file.\nLanguages are always copied.' },
+        { class='checkbox', name='name_subs_after_script', label='Name the softsub track after the script', value=c.name_subs_after_script, x=0, y=16, width=4, hint='Uses the subtitle file name (without extension). Otherwise the track is left unnamed.' },
     }
-    local btn, result = aegisub.dialog.display(d, {"Save", "Preview", "Cancel"}, {ok="Save", cancel="Cancel"})
+    local btn, result = aegisub.dialog.display(d, {"Save", "Preview Filename", "Cancel"}, {ok="Save", cancel="Cancel"})
     if btn == "Save" then
         update_config("main", result)
-    elseif btn == "Preview" then
+    elseif btn == "Preview Filename" then
         -- reopen with what they typed so the preview label updates
         return show_config_dialog(subs, sel, result)
     end

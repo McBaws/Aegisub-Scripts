@@ -910,6 +910,9 @@ def source_track_info(job, tools):
         auds = [st for st in probe_streams(asrc, tools) if st.get("codec_type") == "audio"]
         n = int(job["settings"]["aid"]) - 1 if job["settings"]["use_aid"] else 0
         info["audio"] = track_info(auds[n] if 0 <= n < len(auds) else None)
+    if not job["settings"].get("keep_track_names", True):
+        # keep the languages, drop the names
+        info = {k: ("", lang) for k, (_, lang) in info.items()}
     return info
 
 
@@ -998,7 +1001,9 @@ def do_video_range(clip, src, anode, rng, job, ws, tools, rep):
         if exe:
             rep.log(f"{exe} not found, encoding with ffmpeg's {enc}")
         video = ffmpeg_encode(seg, enc, crf, vb, os.path.join(ws.dirs["ffmpeg"], "video.mkv"), ws, tools, rep)
-    sub_name = os.path.splitext(os.path.basename(job["subfile"]))[0] if sub else ""
+    sub_name = ""
+    if sub and job["settings"].get("name_subs_after_script", True):
+        sub_name = os.path.splitext(os.path.basename(job["subfile"]))[0]
     mux_mkv(video, audio, sub, fonts, out, tools, rep, job["_meta"], sub_name)
 
 
