@@ -607,6 +607,15 @@ def scale(clip, height, square, rep):
         w = even(w * height / h)
         h = height
     if (w, h) != (clip.width, clip.height):
+        # placebo only takes 8/16-bit int or 32-bit float, and scaling at 16-bit is nicer anyway.
+        # the encode step dithers back down to whatever depth is wanted
+        f = clip.format
+        if f.sample_type == vs.INTEGER and f.bits_per_sample != 16:
+            import vstools
+            clip = vstools.depth(clip, 16)
+        elif f.sample_type == vs.FLOAT and f.bits_per_sample != 32:
+            import vstools
+            clip = vstools.depth(clip, 32)
         if w * h > clip.width * clip.height:
             if placebo_works():
                 from vskernels import EwaLanczos
@@ -623,10 +632,11 @@ def scale(clip, height, square, rep):
     return clip.std.SetFrameProps(_SARNum=keep.numerator, _SARDen=keep.denominator)
 
 
-def to_encode_format(clip, bits_req, max_bits, force_420, rep):
+def to_encode_format(clip, bits_req, src_bits, max_bits, force_420, rep):
     f = clip.format
     if bits_req == "Source":
-        bits = f.bits_per_sample if f.sample_type == vs.INTEGER else 10
+        # src_bits is from before scaling, which works at 16-bit
+        bits = src_bits
     else:
         bits = int(bits_req)
     if bits > max_bits:
@@ -1107,8 +1117,9 @@ def run(job, rep):
         compat = o["codec"] in ("MP4 (H.264 + AAC)", "WebM (VP9 + Opus)")
         if not compat and not tools["mkvmerge"]:
             raise JobError("mkvmerge not found, it's needed for mkv output. Set its path in Edit Config.")
+        src_bits = clip.format.bits_per_sample if clip.format.sample_type == vs.INTEGER else 10
         clip = scale(clip, o["height"], s["force_square_pixels"], rep)
-        clip = to_encode_format(clip, o["bitdepth"], max_bits, compat, rep)
+        clip = to_encode_format(clip, o["bitdepth"], src_bits, max_bits, compat, rep)
 
         if o["fps"].strip():
             fps = parse_fps(o["fps"])
