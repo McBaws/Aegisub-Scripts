@@ -170,22 +170,23 @@ class Workspace:
 
 # ---- tools ----
 
+# only ffmpeg can be set in the config, the rest come from PATH (or muxtools' managed binaries)
 TOOL_KEYS = {
     "ffmpeg": "ffmpeg_exe",
-    "mkvmerge": "mkvmerge_exe",
-    "x264": "x264_exe",
-    "x265": "x265_exe",
-    "SvtAv1EncApp": "svtav1_exe",
-    "opusenc": "opusenc_exe",
-    "flac": "flac_exe",
-    "qaac": "qaac_exe",
+    "mkvmerge": None,
+    "x264": None,
+    "x265": None,
+    "SvtAv1EncApp": None,
+    "opusenc": None,
+    "flac": None,
+    "qaac": None,
 }
 
 
 def setup_tools(settings):
     import muxtools as mt
     for name, key in TOOL_KEYS.items():
-        p = (settings.get(key) or "").strip().strip('"')
+        p = (settings.get(key) or "").strip().strip('"') if key else ""
         if p:
             if not os.path.isfile(p):
                 raise JobError(f"{name} path in the config doesn't exist: {p}")
@@ -227,14 +228,14 @@ def need_encoder(ffmpeg, enc):
         raise JobError(f"Your ffmpeg doesn't have {enc}. Use a full build (e.g. gyan.dev 'full').")
 
 
-def run_ffmpeg(cmd, cwd, clip, rep, logpath):
+def run_ffmpeg(cmd, cwd, clip, rep, logpath, raw=False):
     with open(logpath, "wb") as log:
         proc = subprocess.Popen(cmd, cwd=cwd, stdin=subprocess.PIPE if clip is not None else subprocess.DEVNULL,
                                 stdout=subprocess.DEVNULL, stderr=log)
         try:
             if clip is not None:
                 try:
-                    clip.output(proc.stdin, y4m=True)
+                    clip.output(proc.stdin, y4m=not raw)
                 except BrokenPipeError:
                     pass
                 finally:
@@ -1046,7 +1047,13 @@ def do_audio_range(anode, rng, job, ws, tools, rep):
     rep.advance(1)
 
 
-def do_images_range(clip, rng, job, rep):
+def jpeg_qscale(quality):
+    # ffmpeg's mjpeg takes -q:v 2 (best) to 31 (worst), map the 1-100 quality onto that
+    q = max(1, min(100, int(quality)))
+    return str(round(2 + (100 - q) * 29 / 99))
+
+
+def do_images_range(clip, rng, job, ws, tools, rep):
     o = job["opts"]
     outdir = rng["outdir"]
     os.makedirs(outdir, exist_ok=True)
@@ -1054,15 +1061,28 @@ def do_images_range(clip, rng, job, rep):
     seg = to_rgb24(clip[rng["first"]:rng["end"]])
     # files get named by their real frame number in the source
     pattern = os.path.join(outdir, f"%06d.{fmt}")
+    rep.task(f"Writing {seg.num_frames} {fmt} files")
+
     if fmt == "png" and hasattr(core, "fpng"):
         writer = core.fpng.Write(seg, filename=pattern, firstnum=rng["first"], overwrite=True)
+        for _ in writer.frames(close=True):
+            rep.advance(1)
+        return
+
+    # everything else gets piped into ffmpeg as raw rgb. vs writes planes as R,G,B but ffmpeg's
+    # planar rgb (gbrp) wants G,B,R, so shuffle them first
+    ffmpeg = need_ffmpeg(tools)
+    gbr = core.std.ShufflePlanes(seg, [1, 2, 0], vs.RGB)
+    fps = seg.fps if seg.fps.numerator else Fraction(24000, 1001)
+    if fmt == "jpg":
+        codec = ["-c:v", "mjpeg", "-q:v", jpeg_qscale(o["quality"]), "-pix_fmt", "yuvj444p"]
     else:
-        need_plugin("imwri", "imwri", "vapoursynth-imwri")
-        writer = core.imwri.Write(seg, imgformat="JPEG" if fmt == "jpg" else "PNG", filename=pattern,
-                                  firstnum=rng["first"], quality=int(o["quality"]), overwrite=True)
-    rep.task(f"Writing {seg.num_frames} {fmt} files")
-    for _ in writer.frames(close=True):
-        rep.advance(1)
+        codec = ["-c:v", "png", "-pix_fmt", "rgb24"]
+    cmd = [ffmpeg, "-hide_banner", "-nostats", "-loglevel", "warning", "-y",
+           "-f", "rawvideo", "-pix_fmt", "gbrp", "-s", f"{seg.width}x{seg.height}",
+           "-r", f"{fps.numerator}/{fps.denominator}", "-i", "-"] + codec + ["-start_number", str(rng["first"]), pattern]
+    fdir = ws.dirs["ffmpeg"]
+    run_ffmpeg(cmd, fdir, progress_probe(gbr, rep), rep, os.path.join(fdir, "images.log"), raw=True)
 
 
 def run(job, rep):
@@ -1110,7 +1130,9 @@ def run(job, rep):
             rep.total = sum(r["end"] - r["first"] for r in ranges)
             for rng in ranges:
                 current = rng["outdir"]
-                do_images_range(clip, rng, job, rep)
+                ws.begin_range()
+                do_images_range(clip, rng, job, ws, tools, rep)
+                ws.end_range()
                 rep.log(f"Wrote {rng['end'] - rng['first']} images to {current}")
             current = None
             return
