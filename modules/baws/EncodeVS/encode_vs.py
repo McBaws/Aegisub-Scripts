@@ -797,7 +797,7 @@ def ffmpeg_pass_args(enc, n):
     return None
 
 
-def ffmpeg_encode(seg, enc, crf, vb, out, ws, tools, rep, wav=None, aargs=None):
+def ffmpeg_encode(seg, enc, crf, vb, out, ws, tools, rep, wav=None, aargs=None, meta_args=None):
     ffmpeg = need_ffmpeg(tools)
     need_encoder(ffmpeg, enc)
     vargs = ffmpeg_vargs(enc, crf, vb) + colour_args(seg)
@@ -814,7 +814,7 @@ def ffmpeg_encode(seg, enc, crf, vb, out, ws, tools, rep, wav=None, aargs=None):
         if last and wav:
             cmd += ["-map", "1:a:0"] + aargs
         cmd += vargs + pargs
-        cmd += [out] if last else ["-an", "-f", "null", "-"]
+        cmd += ((meta_args or []) + [out]) if last else ["-an", "-f", "null", "-"]
         if len(passes) > 1:
             rep.task(f"Pass {i + 1}/{len(passes)}")
         run_ffmpeg(cmd, fdir, progress_probe(seg, rep), rep, os.path.join(fdir, "video.log"))
@@ -877,17 +877,64 @@ def softsubs(job, rng, src_fps, t0, t1, rep):
 
 # ---- muxing ----
 
-def mux_mkv(video, audio, sub, fonts, out, tools, rep):
+def probe_streams(path, tools):
+    import muxtools as mt
+    ffprobe = mt.get_executable("ffprobe", can_error=False)
+    if not ffprobe or not os.path.isfile(path):
+        return []
+    out = subprocess.run([ffprobe, "-v", "error", "-show_streams", "-of", "json", path],
+                         capture_output=True, text=True, encoding="utf-8", errors="replace").stdout
+    try:
+        return json.loads(out).get("streams", [])
+    except ValueError:
+        return []
+
+
+def track_info(stream):
+    if not stream:
+        return "", "und"
+    tags = {k.lower(): v for k, v in (stream.get("tags") or {}).items()}
+    return tags.get("title", ""), tags.get("language", "") or "und"
+
+
+def source_track_info(job, tools):
+    # names + languages of the source tracks we're using, so the clip keeps them
+    info = {"video": ("", "und"), "audio": ("", "und")}
+    video = job["video"]
+    if not video.startswith("?dummy") and not video.lower().endswith((".vpy", ".py")):
+        vids = [st for st in probe_streams(video, tools)
+                if st.get("codec_type") == "video" and not (st.get("disposition") or {}).get("attached_pic")]
+        info["video"] = track_info(vids[0] if vids else None)
+    asrc = job.get("audio_file") or video
+    if not asrc.startswith("?dummy") and not asrc.startswith("dummy-audio"):
+        auds = [st for st in probe_streams(asrc, tools) if st.get("codec_type") == "audio"]
+        n = int(job["settings"]["aid"]) - 1 if job["settings"]["use_aid"] else 0
+        info["audio"] = track_info(auds[n] if 0 <= n < len(auds) else None)
+    return info
+
+
+def ffmpeg_meta_args(meta, has_audio):
+    args = []
+    kinds = [("v", meta["video"])] + ([("a", meta["audio"])] if has_audio else [])
+    for kind, (title, lang) in kinds:
+        if title:
+            # mp4 keeps track names in handler_name, mkv/webm use title
+            args += [f"-metadata:s:{kind}:0", f"title={title}", f"-metadata:s:{kind}:0", f"handler_name={title}"]
+        args += [f"-metadata:s:{kind}:0", f"language={lang}"]
+    return args
+
+
+def mux_mkv(video, audio, sub, fonts, out, tools, rep, meta, sub_name):
     import muxtools as mt
     if not tools["mkvmerge"]:
         raise JobError("mkvmerge not found, it's needed for mkv output. Set its path in Edit Config.")
     rep.task("Muxing")
     # no fps args here on purpose, the encoders already wrote the rate vapoursynth gave them into the stream
-    tracks = [mt.VideoFile(video).to_track("", "und")]
+    tracks = [mt.VideoFile(video).to_track(*meta["video"])]
     if audio:
-        tracks.append(mt.AudioFile(audio).to_track("", "und"))
+        tracks.append(mt.AudioFile(audio).to_track(*meta["audio"]))
     if sub:
-        tracks.append(sub.to_track("", "und", True, False))
+        tracks.append(sub.to_track(sub_name, "und", True, False))
         tracks += fonts
     mt.mux(*tracks, outfile=out, quiet=True)
 
@@ -923,7 +970,8 @@ def do_video_range(clip, src, anode, rng, job, ws, tools, rep):
             audio_kbit = duration * o["audio_bitrate"] if wav else 0
             vb = video_budget(o["target_kb"], audio_kbit, duration, rep)
         rep.task(f"Encoding {os.path.basename(out)}")
-        ffmpeg_encode(seg, enc, crf, vb, out, ws, tools, rep, wav=wav, aargs=aargs)
+        ffmpeg_encode(seg, enc, crf, vb, out, ws, tools, rep, wav=wav, aargs=aargs,
+                      meta_args=ffmpeg_meta_args(job["_meta"], wav is not None))
         return
 
     # mkv: audio first so a target size can account for its real size
@@ -950,7 +998,8 @@ def do_video_range(clip, src, anode, rng, job, ws, tools, rep):
         if exe:
             rep.log(f"{exe} not found, encoding with ffmpeg's {enc}")
         video = ffmpeg_encode(seg, enc, crf, vb, os.path.join(ws.dirs["ffmpeg"], "video.mkv"), ws, tools, rep)
-    mux_mkv(video, audio, sub, fonts, out, tools, rep)
+    sub_name = os.path.splitext(os.path.basename(job["subfile"]))[0] if sub else ""
+    mux_mkv(video, audio, sub, fonts, out, tools, rep, job["_meta"], sub_name)
 
 
 def video_budget(target_kb, other_kbit, duration, rep):
@@ -1066,6 +1115,7 @@ def run(job, rep):
             clip = clip.std.AssumeFPS(fpsnum=fps.numerator, fpsden=fps.denominator)
 
         anode = load_audio(job, rep) if o["audio"] else None
+        job["_meta"] = source_track_info(job, tools)
 
         two_pass = o["target_kb"] > 0 and (enc in ("libx264", "libx265", "libvpx-vp9"))
         rep.total = sum(r["end"] - r["first"] for r in ranges) * (2 if two_pass else 1)

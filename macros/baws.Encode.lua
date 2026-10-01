@@ -81,8 +81,7 @@ local config_schema = {
         qaac_exe = {class="edit", value="", config=true},
         indexer = {class="dropdown", value="Auto", config=true},
         output_path = {class="edit", value="?script", config=true},
-        naming_base = {class="dropdown", value="Video", config=true},
-        use_frames = {class="checkbox", value=true, config=true},
+        filename = {class="edit", value="$video$ [$sframe$-$eframe$]", config=true},
         use_aid = {class="checkbox", value=false, config=true},
         aid = {class="intedit", value=1, config=true},
         force_square_pixels = {class="checkbox", value=false, config=true}
@@ -244,6 +243,116 @@ local function run_job(cfg, job)
     elseif status == "FAILED" then
         aegisub.log(0, "Encode failed, see above.\n")
     end
+    -- aegisub doesn't always close the progress dialog on its own, so at least make it obvious we're done
+    aegisub.progress.set(100)
+    aegisub.progress.task(status == "OK" and "Finished" or status == "CANCELLED" and "Cancelled" or "Finished (with errors)")
+end
+
+-- ---- filename templates ----
+
+local NAME_TOKENS = {
+    {"$video$", "video file name"},
+    {"$script$", "subtitle file name"},
+    {"$sframe$", "first frame"},
+    {"$eframe$", "last frame (inclusive)"},
+    {"$stime$", "start time, like 0.04.17.170"},
+    {"$etime$", "end time"},
+    {"$line$", "line number (first selected line)"},
+    {"$actor$", "line actor"},
+    {"$style$", "line style"},
+    {"$effect$", "line effect"},
+    {"$text$", "line text without tags, first 40 characters"},
+    {"$mode$", "Video, Audio or Images"},
+    {"$codec$", "video codec, audio codec or image format"},
+    {"$res$", "output height, like 1080p"},
+    {"$crf$", "crf, or the target size when 2-pass is on"},
+    {"$hardsub$", "[Hardsub] when subs get burned in"},
+}
+
+local CODEC_SHORT = {
+    ["x264 (AVC)"]="x264", ["x265 (HEVC)"]="x265", ["SVT-AV1 (AV1)"]="AV1", ["NVENC (AVC)"]="NVENC",
+    ["MP4 (H.264 + AAC)"]="H.264", ["WebM (VP9 + Opus)"]="VP9"
+}
+
+local function time_token(ms)
+    if not ms then return "" end
+    local h = math.floor(ms / 3600000)
+    local m = math.floor(ms / 60000) % 60
+    local sec = math.floor(ms / 1000) % 60
+    return string.format("%d.%02d.%02d.%03d", h, m, sec, ms % 1000)
+end
+
+local function clean_text(text, max_chars)
+    text = text:gsub("{[^}]*}", ""):gsub("\\[Nnh]", " "):gsub("%s+", " "):gsub("^ ", ""):gsub(" $", "")
+    local out, n = {}, 0
+    -- cut on utf-8 character boundaries
+    for ch in text:gmatch("[%z\1-\127\194-\244][\128-\191]*") do
+        n = n + 1
+        if n > max_chars then break end
+        table.insert(out, ch)
+    end
+    return table.concat(out)
+end
+
+local function sanitize(name)
+    -- empty tokens leave double spaces behind, so squash those too
+    name = name:gsub('[<>:"/\\|%?%*%c]', "_"):gsub("%s%s+", " "):gsub("^%s+", ""):gsub("[%s%.]+$", "")
+    return name
+end
+
+local function dialogue_offset(subs)
+    for i = 1, #subs do
+        if subs[i].class == "dialogue" then return i - 1 end
+    end
+    return 0
+end
+
+-- ctx: mode, opts, range, line, line_index
+local function make_name(template, ctx)
+    local vidfile = aegisub.project_properties().video_file or ""
+    local video = vidfile:sub(1, 7) == "?dummy:" and "dummy" or get_filename(vidfile)
+    local script = get_filename(aegisub.file_name())
+    local o, rng, line = ctx.opts or {}, ctx.range or {}, ctx.line or {}
+    local codec = ""
+    if ctx.mode == "video" then codec = CODEC_SHORT[o.codec] or o.codec or ""
+    elseif ctx.mode == "audio" then codec = o.audio_codec or ""
+    elseif ctx.mode == "images" then codec = (o.image_format or ""):upper() end
+    local res = ""
+    if ctx.mode ~= "audio" then
+        local h = o.height and o.height > 0 and o.height or select(2, aegisub.video_size())
+        res = h and (h .. "p") or ""
+    end
+    local crf = ""
+    if ctx.mode == "video" then
+        if (o.target_kb or 0) > 0 then crf = o.target_kb .. "KB"
+        elseif (o.crf or -1) >= 0 then crf = "crf" .. o.crf
+        else crf = "crfdefault" end
+    end
+    local values = {
+        video = video ~= "" and video or "video",
+        script = script ~= "" and script or "untitled",
+        sframe = rng.first and tostring(rng.first) or "",
+        eframe = rng["end"] and tostring(rng["end"] - 1) or "",
+        stime = time_token(rng.start_ms),
+        etime = time_token(rng.end_ms),
+        line = ctx.line_index and tostring(ctx.line_index) or "",
+        actor = line.actor or "",
+        style = line.style or "",
+        effect = line.effect or "",
+        text = clean_text(line.text or "", 40),
+        mode = ({video="Video", audio="Audio", images="Images"})[ctx.mode] or "",
+        codec = codec,
+        res = res,
+        crf = crf,
+        hardsub = o.subs == "hard" and "[Hardsub]" or "",
+    }
+    local name = template:gsub("%$(%w+)%$", function(k)
+        local v = values[k:lower()]
+        if v == nil then return "$" .. k .. "$" end
+        return v
+    end)
+    name = sanitize(name)
+    return name ~= "" and name or "clip"
 end
 
 local function do_encode(subs, sel, mode, opts, each_line)
@@ -299,7 +408,7 @@ local function do_encode(subs, sel, mode, opts, each_line)
             for _, u in ipairs(spans) do
                 if u[1] == s and u[2] == e then dup = true break end
             end
-            if not dup then table.insert(spans, {s, e}) end
+            if not dup then table.insert(spans, {s, e, i}) end
         end
     else
         local s, e = math.huge, 0
@@ -307,29 +416,15 @@ local function do_encode(subs, sel, mode, opts, each_line)
             s = math.min(s, subs[i].start_time)
             e = math.max(e, subs[i].end_time)
         end
-        if s < e then table.insert(spans, {s, e}) end
+        if s < e then table.insert(spans, {s, e, sel[1]}) end
     end
+    local line_offset = dialogue_offset(subs)
 
     local out_dir = aegisub.decode_path(cfg.output_path ~= "" and cfg.output_path or "?script")
     if out_dir == "" or out_dir:sub(1, 1) == "?" then out_dir = script_dir end
     out_dir = strip_slash(out_dir)
 
-    local is_dummy = vidfile:sub(1, 7) == "?dummy:"
-    local vid_name = get_filename(vidfile)
-    local sub_name = get_filename(aegisub.file_name())
-    if sub_name == "" then sub_name = "clip" end
-    local base_name
-    if cfg.naming_base == "Subtitle" or is_dummy or vid_name == "" then
-        base_name = sub_name
-    else
-        base_name = vid_name
-    end
-    base_name = out_dir .. pathsep .. base_name
-
-    local tags = ""
-    if opts.subs == "hard" then tags = tags .. "[Hardsub]" end
-    if mode == "video" and not opts.audio and not is_dummy then tags = tags .. "[NoAudio]" end
-
+    local used = {}
     local ext
     if mode == "audio" then ext = AUDIO_EXT[opts.audio_codec] or "m4a"
     elseif mode == "video" then ext = container end
@@ -344,16 +439,19 @@ local function do_encode(subs, sel, mode, opts, each_line)
         if mode ~= "audio" and r["end"] <= r.first then
             aegisub.log(2, "Skipping %d-%d ms, it doesn't cover a whole frame.\n", sp[1], sp[2])
         else
-            local suffix
-            if not cfg.use_frames or not r.first then
-                suffix = string.format("[%.3f-%.3f]", r.start_ms / 1000, r.end_ms / 1000)
-            else
-                suffix = string.format("[%d-%d]", r.first, r["end"])
+            local name = make_name(cfg.filename, {mode=mode, opts=opts, range=r,
+                                                   line=subs[sp[3]], line_index=sp[3] - line_offset})
+            -- two lines giving the same name shouldn't overwrite each other
+            local base, n = name, 2
+            while used[name:lower()] do
+                name = string.format("%s (%d)", base, n)
+                n = n + 1
             end
+            used[name:lower()] = true
             if mode == "images" then
-                r.outdir = base_name .. tags .. suffix
+                r.outdir = out_dir .. pathsep .. name
             else
-                r.outfile = string.format("%s%s%s.%s", base_name, tags, suffix, ext)
+                r.outfile = string.format("%s%s%s.%s", out_dir, pathsep, name, ext)
             end
             table.insert(ranges, r)
         end
@@ -374,13 +472,27 @@ local function do_encode(subs, sel, mode, opts, each_line)
     })
 end
 
-local function show_config_dialog()
-    local c = get_config("main")
+local function preview_name(subs, sel, template)
+    if not sel or #sel == 0 then return "(select a line to see a preview)" end
+    local v = get_config("video")
+    local opts = {codec=v.codec, crf=v.crf, target_kb=v.target_kb, height=v.height,
+                  subs=v.subs and (v.hardsub or CODEC_SHORT[v.codec] == "H.264" or CODEC_SHORT[v.codec] == "VP9") and "hard" or "soft"}
+    local line = subs[sel[1]]
+    local rng = make_range(line.start_time, line.end_time)
+    return make_name(template, {mode="video", opts=opts, range=rng, line=line,
+                                line_index=sel[1] - dialogue_offset(subs)})
+end
+
+local function show_config_dialog(subs, sel, pending)
+    local c = pending or get_config("main")
     -- older configs might have an indexer name that doesn't exist anymore
     local known = false
     for _, x in ipairs(INDEXERS) do if x == c.indexer then known = true end end
     if not known then c.indexer = "Auto" end
     local exe_hint = "Leave blank to let muxtools find it (its managed binaries, then PATH)."
+    local help = {"Filename tokens (the extension is added for you):"}
+    for _, t in ipairs(NAME_TOKENS) do table.insert(help, string.format("  %s  %s", t[1], t[2])) end
+    local token_help = table.concat(help, "\n")
     local d = {
         { class='label', label='Python:', x=0, y=0 },
         { class='edit', name='python_exe', value=c.python_exe, x=1, y=0, width=3, hint=[[Python that has vapoursynth, vsjetpack and vsmuxtools installed.
@@ -409,15 +521,22 @@ FFMS2 / BestSource: always use that indexer.
 Indexes are kept in Aegisub's vscache folder.]] },
         { class='label', label='Output Path:', x=0, y=10 },
         { class='edit', name='output_path', value=c.output_path, x=1, y=10, width=3, hint='Use ?script for the subtitle folder' },
-        { class='label', label='Base Filename:', x=0, y=11 },
-        { class='dropdown', name='naming_base', items={"Video", "Subtitle"}, value=c.naming_base, x=1, y=11, width=3 },
-        { class='checkbox', name='use_frames', label='Include frames in filename', value=c.use_frames, x=0, y=12, width=4, hint='Uses timestamps otherwise.' },
+        { class='label', label='Filename:', x=0, y=11 },
+        { class='edit', name='filename', value=c.filename, x=1, y=11, width=3, hint=token_help },
+        { class='label', label='Preview:', x=0, y=12 },
+        { class='label', label=preview_name(subs, sel, c.filename), x=1, y=12, width=3 },
         { class='checkbox', name='use_aid', label='Force audio track:', value=c.use_aid, x=0, y=13, hint='Otherwise the first audio track is used.' },
         { class='intedit', name='aid', value=c.aid, x=1, y=13, min=1, hint='Counting audio tracks only, starting from 1.' },
         { class='checkbox', name='force_square_pixels', label='Force square pixels', value=c.force_square_pixels, x=0, y=14, width=4, hint='Resizes anamorphic sources to 1:1 SAR.' },
     }
-    local btn, result = aegisub.dialog.display(d, {"Save", "Cancel"}, {ok="Save", cancel="Cancel"})
-    if btn == "Save" then update_config("main", result) end
+    table.insert(d, { class='label', label=token_help, x=0, y=15, width=4 })
+    local btn, result = aegisub.dialog.display(d, {"Save", "Preview", "Cancel"}, {ok="Save", cancel="Cancel"})
+    if btn == "Save" then
+        update_config("main", result)
+    elseif btn == "Preview" then
+        -- reopen with what they typed so the preview label updates
+        return show_config_dialog(subs, sel, result)
+    end
 end
 
 local function list_has(list, v)
@@ -521,7 +640,7 @@ local function show_dialog(subs, sel)
         if btn == "Video" then return video_page(subs, sel)
         elseif btn == "Image Sequence" then return images_page(subs, sel)
         elseif btn == "Audio" then return audio_page(subs, sel)
-        elseif btn == "Edit Config" then show_config_dialog()
+        elseif btn == "Edit Config" then show_config_dialog(subs, sel)
         else return end
     end
 end
