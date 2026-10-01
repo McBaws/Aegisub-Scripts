@@ -15,64 +15,76 @@
 -- OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 script_name = 'Encode'
-script_description = 'Encode various clips from the current selection'
+script_description = 'Encode clips, audio or image sequences from the current selection'
 script_author = 'McBaws'
 script_namespace = "baws.Encode"
 script_version = '2.0.0'
 
 local haveDepCtrl, DependencyControl, depctrl = pcall(require, "l0.DependencyControl")
-local ConfigHandler, config
+local ConfigHandler, EncodeVS, config
 if haveDepCtrl then
     depctrl = DependencyControl {
         feed="https://raw.githubusercontent.com/McBaws/Aegisub-Scripts/stable/DependencyControl.json",
         {
             {"a-mo.ConfigHandler", version="1.1.4", url="https://github.com/TypesettingTools/Aegisub-Motion",
-             feed="https://raw.githubusercontent.com/TypesettingTools/Aegisub-Motion/DepCtrl/DependencyControl.json"}
+             feed="https://raw.githubusercontent.com/TypesettingTools/Aegisub-Motion/DepCtrl/DependencyControl.json"},
+            {"baws.EncodeVS", version="1.0.0", url="https://github.com/McBaws/Aegisub-Scripts",
+             feed="https://raw.githubusercontent.com/McBaws/Aegisub-Scripts/stable/DependencyControl.json"}
         }
     }
-    ConfigHandler = depctrl:requireModules()
+    ConfigHandler, EncodeVS = depctrl:requireModules()
+else
+    local ok, mod = pcall(require, "baws.EncodeVS")
+    if ok then EncodeVS = mod end
 end
 
 local is_windows = package.config:sub(1, 1) == "\\"
 local pathsep = is_windows and "\\" or "/"
 
+local VIDEO_CODECS = {"x264 (AVC)", "x265 (HEVC)", "SVT-AV1 (AV1)", "NVENC (AVC)", "MP4 (H.264 + AAC)", "WebM (VP9 + Opus)"}
+local AUDIO_CODECS = {"Opus", "FLAC", "AAC"}
+local AUDIO_EXT = {Opus="opus", FLAC="flac", AAC="m4a"}
+
 -- ConfigHandler requires the schema to be structured exactly like Aegisub dialog elements
 local config_schema = {
-    gui = {
-        video = {class="checkbox", value=true, config=true},
-        subs = {class="checkbox", value=true, config=true},
+    video = {
         audio = {class="checkbox", value=true, config=true},
-        context = {class="floatedit", value=0, config=true},
-        tracking = {class="checkbox", value=false, config=true},
-        output = {class="dropdown", value="Video", config=true}
+        subs = {class="checkbox", value=true, config=true},
+        hardsub = {class="checkbox", value=false, config=true},
+        codec = {class="dropdown", value="x264 (AVC)", config=true},
+        crf = {class="floatedit", value=-1, config=true},
+        target_kb = {class="intedit", value=0, config=true},
+        height = {class="intedit", value=0, config=true},
+        bitdepth = {class="dropdown", value="Source", config=true},
+        fps = {class="edit", value="", config=true},
+        audio_codec = {class="dropdown", value="Opus", config=true},
+        audio_bitrate = {class="intedit", value=192, config=true}
+    },
+    audio = {
+        audio_codec = {class="dropdown", value="Opus", config=true},
+        audio_bitrate = {class="intedit", value=192, config=true}
+    },
+    images = {
+        image_format = {class="dropdown", value="png", config=true},
+        quality = {class="intedit", value=95, config=true}
     },
     main = {
         python_exe = {class="edit", value="", config=true},
-        script_path = {class="edit", value="", config=true},
         ffmpeg_exe = {class="edit", value="", config=true},
-        indexer = {class="dropdown", value="Auto", config=true},
+        mkvmerge_exe = {class="edit", value="", config=true},
+        x264_exe = {class="edit", value="", config=true},
+        x265_exe = {class="edit", value="", config=true},
+        svtav1_exe = {class="edit", value="", config=true},
+        opusenc_exe = {class="edit", value="", config=true},
+        flac_exe = {class="edit", value="", config=true},
+        qaac_exe = {class="edit", value="", config=true},
+        indexer = {class="dropdown", value="FFMS2", config=true},
         output_path = {class="edit", value="?script", config=true},
         naming_base = {class="dropdown", value="Video", config=true},
-        audio_encoder = {class="edit", value="", config=true},
         use_frames = {class="checkbox", value=true, config=true},
-        extension = {class="dropdown", value="mkv", config=true},
-        encoder = {class="dropdown", value="AVC", config=true},
-        crf = {class="floatedit", value=-1, config=true},
-        use_source_fps = {class="checkbox", value=true, config=true},
-        force_fps = {class="edit", value="24000/1001", config=true},
-        target_height = {class="intedit", value=-1, config=true},
-        force_source_bitdepth = {class="checkbox", value=true, config=true},
-        custom_bitdepth = {class="dropdown", value="8", config=true},
-        force_square_pixels = {class="checkbox", value=false, config=true},
-        two_pass = {class="checkbox", value=false, config=true},
-        target_filesize = {class="intedit", value=0, config=true},
-        strict_filesize = {class="checkbox", value=false, config=true},
         use_aid = {class="checkbox", value=false, config=true},
         aid = {class="intedit", value=1, config=true},
-        image_format = {class="dropdown", value="jpg", config=true},
-        jpeg_quality = {class="intedit", value=95, config=true},
-        video_command = {class="textbox", value="", config=true},
-        audio_command = {class="textbox", value="", config=true}
+        force_square_pixels = {class="checkbox", value=false, config=true}
     }
 }
 
@@ -118,6 +130,10 @@ local function get_filename(path)
     return (name:gsub('%.[^.]+$', ''))
 end
 
+local function message(text)
+    aegisub.dialog.display({{class="label", label=text, x=0, y=0}}, {"OK"})
+end
+
 -- tiny json writer, only needs to handle what we put in the job file
 local function json_encode(v)
     local t = type(v)
@@ -149,24 +165,21 @@ local function estimate_fps()
     local ms0 = aegisub.ms_from_frame(0)
     local ms1 = aegisub.ms_from_frame(100000)
     if not ms0 or not ms1 or ms1 <= ms0 then return nil end
-    return string.format("%.6f", 100000 * 1000 / (ms1 - ms0))
+    return string.format("%d/1000", math.floor(100000 * 1000 * 1000 / (ms1 - ms0) + 0.5))
 end
 
-local function default_script_path()
-    return aegisub.decode_path("?user/automation/include/baws/encode_vs.py")
+local function worker_path()
+    if EncodeVS and EncodeVS.script_path then return EncodeVS.script_path end
+    return aegisub.decode_path("?user/automation/include/baws/EncodeVS/encode_vs.py")
 end
 
 -- turns line times into frames the same way aegisub-motion does: first visible frame, exclusive end frame
-local function make_range(start_ms, end_ms, ctx)
-    if ctx > 0 then
-        start_ms = math.max(0, start_ms - ctx * 1000)
-        end_ms = end_ms + ctx * 1000
-    end
-    local r = {start_ms = math.floor(start_ms), end_ms = math.floor(end_ms)}
-    local first = aegisub.frame_from_ms(r.start_ms)
+local function make_range(start_ms, end_ms)
+    local r = {start_ms = start_ms, end_ms = end_ms}
+    local first = aegisub.frame_from_ms(start_ms)
     if first then
         r.first = math.max(0, first)
-        r["end"] = aegisub.frame_from_ms(r.end_ms)
+        r["end"] = aegisub.frame_from_ms(end_ms)
         r.aegi_first_ms = aegisub.ms_from_frame(r.first)
     end
     return r
@@ -177,9 +190,9 @@ local function run_job(cfg, job)
     local job_path = string.format("%s%sbaws_encode_%d_%d.json", temp, pathsep, os.time(), math.random(1, 1000000))
     local cancel_path = job_path .. ".cancel"
 
-    local script = cfg.script_path ~= "" and cfg.script_path or default_script_path()
+    local script = worker_path()
     if not file_exists(script) then
-        aegisub.log(0, "Can't find the worker script at:\n%s\nPut encode_vs.py there or set its path in Config.\n", script)
+        aegisub.log(0, "Can't find encode_vs.py at:\n%s\nReinstall baws.EncodeVS through DependencyControl.\n", script)
         return
     end
 
@@ -192,7 +205,7 @@ local function run_job(cfg, job)
     f:close()
 
     local py = cfg.python_exe ~= "" and cfg.python_exe or (is_windows and "python" or "python3")
-    local cmd = string.format('%s -u %s %s 2>&1', quote(py), quote(script), quote(job_path))
+    local cmd = string.format('%s -u -B %s %s 2>&1', quote(py), quote(script), quote(job_path))
     -- cmd.exe eats the outer quotes when a command starts with one, so wrap the whole thing
     if is_windows then cmd = '"' .. cmd .. '"' end
 
@@ -226,40 +239,45 @@ local function run_job(cfg, job)
     os.remove(cancel_path)
 
     if not status then
-        aegisub.log(0, "The worker didn't run properly. Check the Python path in Config (it needs vapoursynth installed).\n")
+        aegisub.log(0, "The worker didn't run properly. Check the Python path in Edit Config (it needs vapoursynth installed).\n")
     elseif status == "FAILED" then
         aegisub.log(0, "Encode failed, see above.\n")
     end
 end
 
-local function do_encode(subs, sel, gui, each_line)
+local function do_encode(subs, sel, mode, opts, each_line)
     local cfg = get_config("main")
     local props = aegisub.project_properties()
     local vidfile = props.video_file or ""
     local audiofile = props.audio_file or ""
 
-    local mode = "video"
-    if gui.output == "Image sequence" then
-        mode = "images"
-    elseif not gui.video then
-        mode = "audio"
-    end
-
     if mode ~= "audio" and vidfile == "" then
-        aegisub.log(0, "No video loaded.\n")
+        message("No video loaded.")
         return
     end
     if mode == "audio" and vidfile == "" and audiofile == "" then
-        aegisub.log(0, "No audio or video loaded.\n")
+        message("No audio or video loaded.")
         return
     end
 
+    local container = "mkv"
+    if mode == "video" then
+        if opts.codec == "MP4 (H.264 + AAC)" then container = "mp4"
+        elseif opts.codec == "WebM (VP9 + Opus)" then container = "webm" end
+    end
+
+    -- softsubs only fit in mkv, everything else gets burned in
+    opts.subs = "none"
+    if mode == "video" and opts.subs_on then
+        opts.subs = (opts.hardsub or container ~= "mkv") and "hard" or "soft"
+    end
+    opts.subs_on = nil
+
     local script_dir = aegisub.decode_path("?script")
-    local hardsub = gui.subs and mode ~= "audio"
     local subfile = ""
-    if hardsub then
+    if opts.subs ~= "none" then
         if script_dir == "?script" or not aegisub.file_name() then
-            aegisub.log(0, "Save the subtitle file first, hardsubbing reads it from disk.\n")
+            message("Save the subtitle file first, subtitles are read from disk.")
             return
         end
         subfile = script_dir .. pathsep .. aegisub.file_name()
@@ -308,21 +326,25 @@ local function do_encode(subs, sel, gui, each_line)
     base_name = out_dir .. pathsep .. base_name
 
     local tags = ""
-    if hardsub then tags = tags .. "[Hardsub]" end
-    if mode == "video" and not gui.audio and not is_dummy then tags = tags .. "[NoAudio]" end
+    if opts.subs == "hard" then tags = tags .. "[Hardsub]" end
+    if mode == "video" and not opts.audio and not is_dummy then tags = tags .. "[NoAudio]" end
+
+    local ext
+    if mode == "audio" then ext = AUDIO_EXT[opts.audio_codec] or "m4a"
+    elseif mode == "video" then ext = container end
 
     local ranges = {}
     for _, sp in ipairs(spans) do
-        local r = make_range(sp[1], sp[2], gui.context)
+        local r = make_range(sp[1], sp[2])
         if mode ~= "audio" and not r.first then
-            aegisub.log(0, "Aegisub has no timecodes loaded, can't work out frame numbers.\n")
+            message("Aegisub has no timecodes loaded, can't work out frame numbers.")
             return
         end
         if mode ~= "audio" and r["end"] <= r.first then
             aegisub.log(2, "Skipping %d-%d ms, it doesn't cover a whole frame.\n", sp[1], sp[2])
         else
             local suffix
-            if gui.context > 0 or not cfg.use_frames or not r.first then
+            if not cfg.use_frames or not r.first then
                 suffix = string.format("[%.3f-%.3f]", r.start_ms / 1000, r.end_ms / 1000)
             else
                 suffix = string.format("[%d-%d]", r.first, r["end"])
@@ -330,7 +352,6 @@ local function do_encode(subs, sel, gui, each_line)
             if mode == "images" then
                 r.outdir = base_name .. tags .. suffix
             else
-                local ext = mode == "audio" and "m4a" or cfg.extension
                 r.outfile = string.format("%s%s%s.%s", base_name, tags, suffix, ext)
             end
             table.insert(ranges, r)
@@ -338,137 +359,162 @@ local function do_encode(subs, sel, gui, each_line)
     end
     if #ranges == 0 then return end
 
-    local job = {
+    run_job(cfg, {
         mode = mode,
         video = vidfile,
         video_dir = aegisub.decode_path("?video"),
         audio_file = (audiofile ~= vidfile) and audiofile or "",
         subfile = subfile,
         vscache = aegisub.decode_path("?local/vscache"),
-        data_dir = aegisub.decode_path("?data"),
-        user_dir = aegisub.decode_path("?user"),
-        temp_dir = strip_slash(aegisub.decode_path("?temp")),
-        indexer = cfg.indexer,
         fallback_fps = estimate_fps() or "",
-        gui = {subs = hardsub, audio = gui.audio, tracking = gui.tracking},
         settings = cfg,
+        opts = opts,
         ranges = ranges
-    }
-    run_job(cfg, job)
+    })
 end
 
 local function show_config_dialog()
     local c = get_config("main")
+    local exe_hint = "Leave blank to search PATH."
+    local d = {
+        { class='label', label='Python:', x=0, y=0 },
+        { class='edit', name='python_exe', value=c.python_exe, x=1, y=0, width=3, hint=[[Python that has vapoursynth, vsjetpack and vsmuxtools installed.
+Leave blank to use python from PATH.]] },
+        { class='label', label='ffmpeg:', x=0, y=1 },
+        { class='edit', name='ffmpeg_exe', value=c.ffmpeg_exe, x=1, y=1, width=3, hint=exe_hint .. "\nRequired. ffprobe is picked up from the same folder." },
+        { class='label', label='mkvmerge:', x=0, y=2 },
+        { class='edit', name='mkvmerge_exe', value=c.mkvmerge_exe, x=1, y=2, width=3, hint=exe_hint .. "\nOptional, ffmpeg muxes if it's missing." },
+        { class='label', label='x264:', x=0, y=3 },
+        { class='edit', name='x264_exe', value=c.x264_exe, x=1, y=3, width=3, hint=exe_hint .. "\nOptional, ffmpeg's libx264 is used if it's missing." },
+        { class='label', label='x265:', x=0, y=4 },
+        { class='edit', name='x265_exe', value=c.x265_exe, x=1, y=4, width=3, hint=exe_hint .. "\nOptional, ffmpeg's libx265 is used if it's missing." },
+        { class='label', label='SvtAv1EncApp:', x=0, y=5 },
+        { class='edit', name='svtav1_exe', value=c.svtav1_exe, x=1, y=5, width=3, hint=exe_hint .. "\nOptional, ffmpeg's libsvtav1 is used if it's missing." },
+        { class='label', label='opusenc:', x=0, y=6 },
+        { class='edit', name='opusenc_exe', value=c.opusenc_exe, x=1, y=6, width=3, hint=exe_hint .. "\nOptional, ffmpeg's libopus is used if it's missing." },
+        { class='label', label='flac:', x=0, y=7 },
+        { class='edit', name='flac_exe', value=c.flac_exe, x=1, y=7, width=3, hint=exe_hint .. "\nOptional, ffmpeg is used if it's missing." },
+        { class='label', label='qaac:', x=0, y=8 },
+        { class='edit', name='qaac_exe', value=c.qaac_exe, x=1, y=8, width=3, hint=exe_hint .. "\nOptional, ffmpeg's AAC is used if it's missing." },
 
-    local c_def = {
-        { class='label', label='Python path:', x=0, y=0 },
-        { class='edit', name='python_exe', value=c.python_exe, x=1, y=0, width=3, hint=[[Python that has vapoursynth + vsjetpack installed.
-If left blank, uses python from PATH.]] },
-
-        { class='label', label='Worker script:', x=0, y=1 },
-        { class='edit', name='script_path', value=c.script_path, x=1, y=1, width=3, hint=[[Path to encode_vs.py.
-If left blank, uses ?user/automation/include/baws/encode_vs.py]] },
-
-        { class='label', label='ffmpeg path:', x=0, y=2 },
-        { class='edit', name='ffmpeg_exe', value=c.ffmpeg_exe, x=1, y=2, width=3, hint=[[Path to the ffmpeg executable (encoding + muxing).
-If left blank, searches system PATH.]] },
-
-        { class='label', label='Indexer:', x=0, y=3 },
-        { class='dropdown', name='indexer', items={"Auto", "LSMASH", "BestSource", "FFMS2"}, value=c.indexer, x=1, y=3, width=3, hint=[[Auto picks whatever matches Aegisub's video provider.
-With Aegisub's VapourSynth provider, LSMASH reuses Aegisub's own index.]] },
-
-        { class='label', label='Output Path:', x=0, y=4 },
-        { class='edit', name='output_path', value=c.output_path, x=1, y=4, width=3, hint='Use ?script for current folder' },
-
-        { class='label', label='Base Filename:', x=0, y=5 },
-        { class='dropdown', name='naming_base', items={"Video", "Subtitle"}, value=c.naming_base, x=1, y=5, width=3 },
-
-        { class='label', label='Extension:', x=0, y=6 },
-        { class='dropdown', name='extension', items={"mp4", "mkv"}, value=c.extension, x=1, y=6, width=3 },
-
-        { class='checkbox', name='use_frames', label='Use frames in filename', value=c.use_frames, x=0, y=7, width=4, hint=[[Will use timestamps otherwise.]] },
-
-        { class='label', label='Video Encoder:', x=0, y=8 },
-        { class='dropdown', name='encoder', items={"AVC", "AVC-NVENC", "HEVC", "AV1"}, value=c.encoder, x=1, y=8, width=3, hint=[[AVC = libx264, HEVC = libx265, AV1 = libsvtav1 (all via ffmpeg)]] },
-
-        { class='label', label='CRF (-1 for default):', x=0, y=9 },
-        { class='floatedit', name='crf', value=c.crf, x=1, y=9, width=3, hint=[[Default is reasonably high quality (eg. crf18 for AVC). Sets cq for AVC-NVENC.]] },
-
-        { class='label', label='Audio Encoder:', x=0, y=10 },
-        { class='edit', name='audio_encoder', value=c.audio_encoder, x=1, y=10, width=3, hint=[[ffmpeg audio encoder name.
-If left blank, picks the best AAC encoder your ffmpeg has.]] },
-
-        { class='checkbox', name='use_aid', label='Force Audio ID:', value=c.use_aid, x=0, y=11, hint=[[Pick which audio track to use, otherwise the first one.]] },
-        { class='intedit', name='aid', value=c.aid, x=1, y=11, min=1, hint=[[Audio track to use, counting audio tracks only, starting from 1.]] },
-
-        { class='checkbox', name='use_source_fps', label='Use source FPS', value=c.use_source_fps, x=0, y=12 },
-        { class='label', label='Or label FPS as:', x=1, y=12 },
-        { class='edit', name='force_fps', value=c.force_fps, x=2, y=12, width=2, hint=[[e.g. 24000/1001. Only relabels the output rate, frames are never added or dropped.]] },
-
-        { class='checkbox', name='force_source_bitdepth', label='Use source bit depth', value=c.force_source_bitdepth, x=0, y=13 },
-        { class='label', label='Or custom depth:', x=1, y=13 },
-        { class='dropdown', name='custom_bitdepth', items={"8", "10", "12"}, value=c.custom_bitdepth, x=2, y=13, width=2 },
-
-        { class='label', label='Target Filesize (KB, 0=off):', x=0, y=14 },
-        { class='intedit', name='target_filesize', value=c.target_filesize, x=1, y=14 },
-        { class='checkbox', name='strict_filesize', label='Strict Constraint', value=c.strict_filesize, x=2, y=14, width=2 },
-
-        { class='label', label='Output Height (-1 is original):', x=0, y=15 },
-        { class='intedit', name='target_height', value=c.target_height, x=1, y=15 },
-        { class='checkbox', name='force_square_pixels', label='Force square pixels', value=c.force_square_pixels, x=2, y=15, width=2 },
-
-        { class='checkbox', name='two_pass', label='Two Pass', value=c.two_pass, x=0, y=16, width=4 },
-
-        { class='label', label='Image Format:', x=0, y=17 },
-        { class='dropdown', name='image_format', items={"jpg", "png"}, value=c.image_format, x=1, y=17 },
-        { class='label', label='JPEG Quality:', x=2, y=17 },
-        { class='intedit', name='jpeg_quality', value=c.jpeg_quality, x=3, y=17, min=1, max=100, hint=[[1-100, used for jpg image sequences.]] },
-
-        { class='label', label='Custom Video Options:', x=0, y=18, width=4 },
-        { class='textbox', name='video_command', value=c.video_command, x=0, y=19, width=4, height=2, hint=[[Extra ffmpeg output options for video encodes, e.g. -tune animation
-These used to be mpv options; anything starting with -- gets ignored.]] },
-
-        { class='label', label='Custom Audio-Only Options:', x=0, y=21, width=4 },
-        { class='textbox', name='audio_command', value=c.audio_command, x=0, y=22, width=4, height=2, hint=[[Extra ffmpeg output options when encoding only audio.]] },
+        { class='label', label='Video Indexer:', x=0, y=9 },
+        { class='dropdown', name='indexer', items={"FFMS2", "BestSource", "LSMASH"}, value=c.indexer, x=1, y=9, width=3, hint=[[FFMS2 reuses Aegisub's lwi index from vscache if there is one, otherwise makes an ffindex there.]] },
+        { class='label', label='Output Path:', x=0, y=10 },
+        { class='edit', name='output_path', value=c.output_path, x=1, y=10, width=3, hint='Use ?script for the subtitle folder' },
+        { class='label', label='Base Filename:', x=0, y=11 },
+        { class='dropdown', name='naming_base', items={"Video", "Subtitle"}, value=c.naming_base, x=1, y=11, width=3 },
+        { class='checkbox', name='use_frames', label='Include frames in filename', value=c.use_frames, x=0, y=12, width=4, hint='Uses timestamps otherwise.' },
+        { class='checkbox', name='use_aid', label='Force audio track:', value=c.use_aid, x=0, y=13, hint='Otherwise the first audio track is used.' },
+        { class='intedit', name='aid', value=c.aid, x=1, y=13, min=1, hint='Counting audio tracks only, starting from 1.' },
+        { class='checkbox', name='force_square_pixels', label='Force square pixels', value=c.force_square_pixels, x=0, y=14, width=4, hint='Resizes anamorphic sources to 1:1 SAR.' },
     }
+    local btn, result = aegisub.dialog.display(d, {"Save", "Cancel"}, {ok="Save", cancel="Cancel"})
+    if btn == "Save" then update_config("main", result) end
+end
 
-    local btn, result = aegisub.dialog.display(c_def, {"Save", "Cancel"}, {ok="Save", cancel="Cancel"})
-    if btn == "Save" then
-        update_config("main", result)
+local function list_has(list, v)
+    for _, x in ipairs(list) do if x == v then return true end end
+    return false
+end
+
+-- shows a mode page, returns (button, values), loops back on bad input
+local function mode_page(section, build, validate)
+    local values = get_config(section)
+    while true do
+        local btn, result = aegisub.dialog.display(build(values), {"Encode", "Encode Each Line", "Cancel"}, {ok="Encode", cancel="Cancel"})
+        if not btn or btn == "Cancel" then return nil end
+        values = result
+        local err = validate and validate(result)
+        if err then
+            message(err)
+        else
+            update_config(section, result)
+            return btn, result
+        end
     end
 end
 
-local function show_dialog(subs, sel)
-    local g = get_config("gui")
-
-    local gui_def = {
-        { class='label', label='Output:', x=0, y=0 },
-        { class='dropdown', name='output', items={"Video", "Image sequence"}, value=g.output, x=1, y=0 },
-        { class='checkbox', name='video', label='Include Video', value=g.video, x=0, y=1, hint='Untick for audio only' },
-        { class='checkbox', name='subs', label='Include Hardsubs', value=g.subs, x=0, y=2 },
-        { class='checkbox', name='audio', label='Include Audio', value=g.audio, x=0, y=3 },
-        { class='label', label='Include Context (sec):', x=0, y=4 },
-        { class='floatedit', name='context', value=g.context, x=1, y=4, hint=[[Extra duration (in seconds) to add at the start and end of a clip.]] },
-        { class='checkbox', name='tracking', label='Tracking Mode (AVC 8bit SAR 1:1)', value=g.tracking, x=0, y=5, width=2, hint='High compatibility encode settings. Ignores quality settings.' }
-    }
-
-    local buttons = {"Encode", "Encode Each Line", "Config", "Cancel"}
-    local btn, result = aegisub.dialog.display(gui_def, buttons, {ok="Encode", cancel="Cancel"})
-
-    if not btn or btn == "Cancel" then return end
-
-    if btn == "Config" then
-        show_config_dialog()
-        show_dialog(subs, sel)
-        return
+local function video_page(subs, sel)
+    local build = function(v)
+        if not list_has(VIDEO_CODECS, v.codec) then v.codec = VIDEO_CODECS[1] end
+        return {
+            { class='checkbox', name='audio', label='Include audio', value=v.audio, x=0, y=0, width=2 },
+            { class='checkbox', name='subs', label='Include subtitles', value=v.subs, x=0, y=1, width=2, hint='Softsubs in mkv, burned in for mp4/webm' },
+            { class='checkbox', name='hardsub', label='Hardsub subtitles', value=v.hardsub, x=0, y=2, width=2, hint='Burn subs in even when the format could take softsubs' },
+            { class='label', label='Video codec:', x=0, y=3 },
+            { class='dropdown', name='codec', items=VIDEO_CODECS, value=v.codec, x=1, y=3, hint='MP4 and WebM also decide the audio codec' },
+            { class='label', label='CRF (-1 = default):', x=0, y=4 },
+            { class='floatedit', name='crf', value=v.crf, x=1, y=4, hint='Sets cq for NVENC' },
+            { class='label', label='2-pass filesize (KB):', x=0, y=5 },
+            { class='intedit', name='target_kb', value=v.target_kb, x=1, y=5, min=0, hint='0 = off. Anything above 0 encodes to that size instead of using CRF.' },
+            { class='label', label='Height (0 = source):', x=0, y=6 },
+            { class='intedit', name='height', value=v.height, x=1, y=6, min=0 },
+            { class='label', label='Bit depth:', x=0, y=7 },
+            { class='dropdown', name='bitdepth', items={"Source", "8", "10", "12"}, value=v.bitdepth, x=1, y=7 },
+            { class='label', label='Assert FPS:', x=0, y=8 },
+            { class='edit', name='fps', value=v.fps, x=1, y=8, hint='A fraction like 24000/1001. Empty = source fps. Relabels the rate, frames are never dropped or duplicated.' },
+            { class='label', label='Audio codec:', x=0, y=9 },
+            { class='dropdown', name='audio_codec', items=AUDIO_CODECS, value=v.audio_codec, x=1, y=9, hint='Ignored for MP4 (AAC) and WebM (Opus)' },
+            { class='label', label='Audio bitrate (kbps):', x=0, y=10 },
+            { class='intedit', name='audio_bitrate', value=v.audio_bitrate, x=1, y=10, min=8, hint='Ignored for FLAC' },
+        }
     end
+    local validate = function(v)
+        local fps = v.fps:gsub("^%s+", ""):gsub("%s+$", "")
+        if fps ~= "" and not fps:match("^%d+/%d+$") then
+            return "Assert FPS has to be a fraction like 24000/1001, or empty for source fps."
+        end
+        v.fps = fps
+    end
+    local btn, v = mode_page("video", build, validate)
+    if not btn then return end
+    local opts = {
+        audio = v.audio, subs_on = v.subs, hardsub = v.hardsub, codec = v.codec, crf = v.crf,
+        target_kb = v.target_kb, height = v.height, bitdepth = v.bitdepth, fps = v.fps,
+        audio_codec = v.audio_codec, audio_bitrate = v.audio_bitrate
+    }
+    do_encode(subs, sel, "video", opts, btn == "Encode Each Line")
+end
 
-    update_config("gui", result)
+local function audio_page(subs, sel)
+    local build = function(v)
+        return {
+            { class='label', label='Audio codec:', x=0, y=0 },
+            { class='dropdown', name='audio_codec', items=AUDIO_CODECS, value=v.audio_codec, x=1, y=0 },
+            { class='label', label='Bitrate (kbps):', x=0, y=1 },
+            { class='intedit', name='audio_bitrate', value=v.audio_bitrate, x=1, y=1, min=8, hint='Ignored for FLAC' },
+        }
+    end
+    local btn, v = mode_page("audio", build)
+    if not btn then return end
+    do_encode(subs, sel, "audio", {audio_codec = v.audio_codec, audio_bitrate = v.audio_bitrate}, btn == "Encode Each Line")
+end
 
-    if btn == "Encode" then
-        do_encode(subs, sel, result, false)
-    elseif btn == "Encode Each Line" then
-        do_encode(subs, sel, result, true)
+local function images_page(subs, sel)
+    local build = function(v)
+        return {
+            { class='label', label='Image format:', x=0, y=0 },
+            { class='dropdown', name='image_format', items={"png", "jpg"}, value=v.image_format, x=1, y=0 },
+            { class='label', label='Quality:', x=0, y=1 },
+            { class='intedit', name='quality', value=v.quality, x=1, y=1, min=1, max=100, hint='1-100, jpg only' },
+        }
+    end
+    local btn, v = mode_page("images", build)
+    if not btn then return end
+    do_encode(subs, sel, "images", {image_format = v.image_format, quality = v.quality}, btn == "Encode Each Line")
+end
+
+local function show_dialog(subs, sel)
+    while true do
+        local btn = aegisub.dialog.display(
+            {{class="label", label="Choose a mode", x=0, y=0}},
+            {"Video", "Image Sequence", "Audio", "Edit Config", "Cancel"},
+            {cancel="Cancel"})
+        if btn == "Video" then return video_page(subs, sel)
+        elseif btn == "Image Sequence" then return images_page(subs, sel)
+        elseif btn == "Audio" then return audio_page(subs, sel)
+        elseif btn == "Edit Config" then show_config_dialog()
+        else return end
     end
 end
 

@@ -7,8 +7,7 @@
   "url": "@{baseUrl}",
   "maintainer": "McBaws",
   "knownFeeds": {
-    "a-mo": "https://raw.githubusercontent.com/TypesettingTools/Aegisub-Motion/DepCtrl/DependencyControl.json",
-    "petzku": "https://raw.githubusercontent.com/petzku/Aegisub-Scripts/stable/DependencyControl.json"
+    "a-mo": "https://raw.githubusercontent.com/TypesettingTools/Aegisub-Motion/DepCtrl/DependencyControl.json"
   },
   "macros": {
     "baws.PlainerText": {
@@ -117,17 +116,17 @@
       "url": "@{baseUrl}#@{namespace}",
       "author": "McBaws",
       "name": "Encode",
-      "description": "Create a clip, now with various new codecs and features.",
+      "description": "Encode clips, audio or image sequences from the selected lines, frame-exact via VapourSynth.",
       "channels": {
         "stable": {
-          "version": "1.0.1",
-          "released": "2026-08-05",
+          "version": "2.0.0",
+          "released": "2026-10-01",
           "default": true,
           "files": [
             {
               "name": ".lua",
               "url": "@{fileBaseUrl}@{fileName}",
-              "sha1": "0838473145451f568e974673496e0560a736c4b0"
+              "sha1": "42a58cf132c9db55baf1f5a6e13fb9dbf5f9d303"
             }
           ],
           "requiredModules": [
@@ -139,11 +138,10 @@
               "feed": "@{feed:a-mo}"
             },
             {
-              "moduleName": "petzku.util",
-              "name": "petzkuLib",
-              "url": "https://github.com/petzku/Aegisub-Scripts",
-              "version": "0.5.2",
-              "feed": "@{feed:petzku}"
+              "moduleName": "baws.EncodeVS",
+              "name": "EncodeVS",
+              "url": "https://github.com/McBaws/Aegisub-Scripts",
+              "version": "1.0.0"
             }
           ]
         }
@@ -151,7 +149,39 @@
       "changelog": {
         "0.1.0": ["Initial release"],
         "1.0.0": ["Fix crash on import"],
-        "1.0.1": ["Fix config and mkvmerge args"]
+        "1.0.1": ["Fix config and mkvmerge args"],
+        "2.0.0": ["Complete rewrite replacing mpv with vapoursynth"]
+      }
+    }
+  },
+  "modules": {
+    "baws.EncodeVS": {
+      "fileBaseUrl": "@{fileBaseUrl}/@{channel}/modules/@{namespacePath}",
+      "url": "@{baseUrl}#@{namespace}",
+      "author": "McBaws",
+      "name": "EncodeVS",
+      "description": "VapourSynth worker used by baws.Encode",
+      "channels": {
+        "stable": {
+          "version": "1.0.0",
+          "released": "2026-10-01",
+          "default": true,
+          "files": [
+            {
+              "name": ".lua",
+              "url": "@{fileBaseUrl}@{fileName}",
+              "sha1": "0841d7be5252e77de9f5c812bab759614e261020"
+            },
+            {
+              "name": "/encode_vs.py",
+              "url": "@{fileBaseUrl}@{fileName}",
+              "sha1": "df9a96fd9c3774ff2fd2bfd5cef47a0624e9da14"
+            }
+          ]
+        }
+      },
+      "changelog": {
+        "1.0.0": ["Initial release"]
       }
     }
   }
