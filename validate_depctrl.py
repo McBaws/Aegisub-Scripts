@@ -95,7 +95,7 @@ def main():
         print("All macros validated successfully!")
 
     modules_fine = True
-    if hasattr(depctrl, 'modules'):
+    if 'modules' in depctrl:
         for ns, module in depctrl['modules'].items():
             # assume all modules are in `modules/${namespacepath}.${extension}`
             # i.e. modules/petzku/util.moon

@@ -40,8 +40,12 @@
         }
       },
       "changelog": {
-        "1.0.0": ["Initial release"],
-        "1.0.1": ["Fix line endings"]
+        "1.0.0": [
+          "Initial release"
+        ],
+        "1.0.1": [
+          "Fix line endings"
+        ]
       }
     },
     "baws.SceneBleed": {
@@ -74,8 +78,12 @@
         }
       },
       "changelog": {
-        "1.0.0": ["Initial release"],
-        "1.1.0": ["Fix detection for tightly packed keyframes"]
+        "1.0.0": [
+          "Initial release"
+        ],
+        "1.1.0": [
+          "Fix detection for tightly packed keyframes"
+        ]
       }
     },
     "baws.Smartify": {
@@ -108,7 +116,9 @@
         }
       },
       "changelog": {
-        "1.0.0": ["Initial release"]
+        "1.0.0": [
+          "Initial release"
+        ]
       }
     },
     "baws.Encode": {
@@ -126,7 +136,7 @@
             {
               "name": ".lua",
               "url": "@{fileBaseUrl}@{fileName}",
-              "sha1": "42a58cf132c9db55baf1f5a6e13fb9dbf5f9d303"
+              "sha1": "b43d2e82538273b13f44ca05a50fd6f722d0484b"
             }
           ],
           "requiredModules": [
@@ -147,10 +157,18 @@
         }
       },
       "changelog": {
-        "0.1.0": ["Initial release"],
-        "1.0.0": ["Fix crash on import"],
-        "1.0.1": ["Fix config and mkvmerge args"],
-        "2.0.0": ["Complete rewrite replacing mpv with vapoursynth"]
+        "0.1.0": [
+          "Initial release"
+        ],
+        "1.0.0": [
+          "Fix crash on import"
+        ],
+        "1.0.1": [
+          "Fix config and mkvmerge args"
+        ],
+        "2.0.0": [
+          "Complete rewrite replacing mpv with vapoursynth"
+        ]
       }
     }
   },
@@ -175,13 +193,15 @@
             {
               "name": "/encode_vs.py",
               "url": "@{fileBaseUrl}@{fileName}",
-              "sha1": "df9a96fd9c3774ff2fd2bfd5cef47a0624e9da14"
+              "sha1": "0a8dabd38d0ae97b98ad1d889499fc09f9f9d9ba"
             }
           ]
         }
       },
       "changelog": {
-        "1.0.0": ["Initial release"]
+        "1.0.0": [
+          "Initial release"
+        ]
       }
     }
   }
