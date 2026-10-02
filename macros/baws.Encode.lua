@@ -18,7 +18,7 @@ script_name = 'Encode'
 script_description = 'Encode clips, audio or image sequences from the current selection'
 script_author = 'McBaws'
 script_namespace = "baws.Encode"
-script_version = '2.0.0'
+script_version = '2.0.1'
 
 local haveDepCtrl, DependencyControl, depctrl = pcall(require, "l0.DependencyControl")
 local ConfigHandler, EncodeVS, config
@@ -71,7 +71,7 @@ local config_schema = {
         aid = {class="intedit", value=1, config=true}
     },
     images = {
-        image_format = {class="dropdown", value="png", config=true},
+        image_format = {class="dropdown", value="jpg", config=true},
         quality = {class="intedit", value=95, config=true}
     },
     main = {
@@ -586,7 +586,7 @@ local function images_page(subs, sel)
     local build = function(v)
         return {
             { class='label', label='Image format:', x=0, y=0 },
-            { class='dropdown', name='image_format', items={"png", "jpg"}, value=v.image_format, x=1, y=0 },
+            { class='dropdown', name='image_format', items={"jpg", "png"}, value=v.image_format, x=1, y=0 },
             { class='label', label='Quality:', x=0, y=1 },
             { class='intedit', name='quality', value=v.quality, x=1, y=1, min=1, max=100, hint='1-100, jpg only' },
         }

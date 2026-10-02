@@ -129,14 +129,14 @@
       "description": "Encode clips, audio or image sequences from the selected lines, frame-exact via VapourSynth.",
       "channels": {
         "stable": {
-          "version": "2.0.0",
-          "released": "2026-10-01",
+          "version": "2.0.1",
+          "released": "2026-10-02",
           "default": true,
           "files": [
             {
               "name": ".lua",
               "url": "@{fileBaseUrl}@{fileName}",
-              "sha1": "b43d2e82538273b13f44ca05a50fd6f722d0484b"
+              "sha1": "f691ece5dc8735798f7d0ea6748d3b02802af394"
             }
           ],
           "requiredModules": [
@@ -168,6 +168,9 @@
         ],
         "2.0.0": [
           "Complete rewrite replacing mpv with vapoursynth"
+        ],
+        "2.0.1": [
+          "Make jpg default output format for image sequences"
         ]
       }
     }
