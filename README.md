@@ -10,11 +10,22 @@ Scripts I make will use [DependencyControl](https://github.com/TypesettingTools/
 
 ### Encode
 
-Based on [EncodeClip](https://github.com/petzku/Aegisub-Scripts/blob/master/macros/petzku.EncodeClip.lua).
+This script allows you to encode the files you have open in Aegisub. You can output any combination of video, audio, and subtitles, and also output the video as an image sequence.
 
-My main motivation was having a script that quickly encoded a bunch of lines for use with aegisub motion. a-mo was too slow and petzku's version doesn't encode with a constant frame rate. This turned out to be because mpv is incapable of encoding in CFR for some ungodly reason. So we just remux with mkvmerge.
+This script is very fast, with high quality processing and accurate scaling. It can reuse your indexes if you use the VapourSynth source in Aegisub, and reuses any indexes generated the first time around on subsequent runs.
 
-Anyway, this script lets you set the desired bit depth, crf, fps, and encode with avc, avc-nvenc, hevc, and av1.
+You can set the desired output codecs, image size, bit depth, crf, target filesize, fps, audio bitrate, etc.
+
+The main encoding logic uses VapourSynth, so this script requires Python a python installation alongside:
+- vsjetpack >= 2.2.4
+- muxtools >= 0.5.0
+- vsmuxtools >= 0.4.4
+
+These can be installed with this command:
+
+```bash
+pip install "vsjetpack[full]" muxtools vsmuxtools --extra-index-url https://jaded-encoding-thaumaturgy.github.io/vs-wheels/simple
+```
 
 ### PlainerText
 

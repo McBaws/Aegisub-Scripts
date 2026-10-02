@@ -1,6 +1,4 @@
 -- Copyright (c) 2026, McBaws
--- Copyright (c) 2020, petzku <petzku@zku.fi>
--- Copyright (c) 2020, The0x539 <the0x539@gmail.com>
 --
 -- Permission to use, copy, modify, and distribute this software for any
 -- purpose with or without fee is hereby granted, provided that the above
