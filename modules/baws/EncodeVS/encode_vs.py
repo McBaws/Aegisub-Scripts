@@ -1,4 +1,4 @@
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 
 import json
 import os
@@ -270,6 +270,12 @@ def vssource_cache_name(path, ext):
     return f"{p.name}_{h}{ext}"
 
 
+def bs_cache_base(vscache, source):
+    # cachemode 3 treats cachepath as a base filename and appends .<track>.bsindex, so we get one
+    # flat file per source (named like the ffindex) instead of mode 1's folder tree of the source path
+    return os.path.join(vscache, vssource_cache_name(source, ""))
+
+
 def video_name_candidates(job):
     # project_properties() paths go through MakeRelative/MakeAbsolute and can contain "..",
     # aegisub's vs provider got the path as it was opened, so try both
@@ -481,7 +487,7 @@ def load_video(job, rep):
     if indexer == "BestSource":
         need_plugin("bs", "BestSource", "vapoursynth-bestsource")
         with bs_progress(rep, "Opening with BestSource (indexes on first use)"):
-            clip = core.bs.VideoSource(source=video, cachepath=vscache, showprogress=True)
+            clip = core.bs.VideoSource(source=video, cachemode=3, cachepath=bs_cache_base(vscache, video), showprogress=True)
         return clip, "BestSource"
 
     raise JobError(f"Unknown indexer {indexer}")
@@ -496,9 +502,8 @@ def load_audio(job, rep):
     o = job["opts"]
     track = -int(o.get("aid", 1)) if o.get("use_aid") else -1
     try:
-        # cachepath keeps the index in vscache instead of bestsource's default appdata folder
         with bs_progress(rep, "Loading audio (indexes on first use)"):
-            return core.bs.AudioSource(source=src, track=track, cachepath=job["vscache"], showprogress=True)
+            return core.bs.AudioSource(source=src, track=track, cachemode=3, cachepath=bs_cache_base(job["vscache"], src), showprogress=True)
     except vs.Error as e:
         rep.warn(f"Couldn't open audio, continuing without it: {e}")
         return None

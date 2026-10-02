@@ -1,4 +1,4 @@
--- version="1.0.0"
+-- version="1.0.1"
 -- Copyright (c) 2026, McBaws
 -- Ships encode_vs.py (the VapourSynth worker used by baws.Encode) and tells the macro where it is.
 
