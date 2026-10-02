@@ -447,22 +447,20 @@ local function show_config_dialog(subs, sel, pending)
 LWI: reuse Aegisub's lwi index if there is one, otherwise make an lwi.
 FFMS2 / BestSource: always use that indexer.
 Indexes are kept in Aegisub's vscache folder.]] },
-        spacer(1),
-        { class='checkbox', name='keep_track_names', label='Copy track names from the source', value=c.keep_track_names, x=0, y=2, width=4, hint='Gives the video and audio tracks the same names as in the source file.\nLanguages are always copied.' },
-        { class='checkbox', name='name_subs_after_script', label='Name the softsub track after the script', value=c.name_subs_after_script, x=0, y=3, width=4, hint='Uses the subtitle file name (without extension). Otherwise the track is left unnamed.' },
-        spacer(4),
-        { class='label', label='Output Path:', x=0, y=5 },
-        { class='edit', name='output_path', value=c.output_path, x=1, y=5, width=3, hint='Use ?script for the subtitle folder' },
-        { class='label', label='Filename:', x=0, y=6 },
-        { class='edit', name='filename', value=c.filename, x=1, y=6, width=3, hint=token_help() },
-        { class='label', label='Preview:', x=0, y=7 },
-        { class='label', label=preview_name(subs, sel, c.filename), x=1, y=7, width=3 },
-        spacer(8),
-        { class='label', label='Python:', x=0, y=9 },
-        { class='edit', name='python_exe', value=c.python_exe, x=1, y=9, width=3, hint=[[Python that has vapoursynth, vsjetpack and vsmuxtools installed.
+        { class='label', label='Output Path:', x=0, y=1 },
+        { class='edit', name='output_path', value=c.output_path, x=1, y=1, width=3, hint='Use ?script for the subtitle folder' },
+        { class='label', label='Filename:', x=0, y=2 },
+        { class='edit', name='filename', value=c.filename, x=1, y=2, width=3, hint=token_help() },
+        { class='label', label='Preview:', x=0, y=3 },
+        { class='label', label=preview_name(subs, sel, c.filename), x=1, y=3, width=3 },
+        { class='checkbox', name='keep_track_names', label='Copy track names from the source', value=c.keep_track_names, x=0, y=4, width=4, hint='Gives the video and audio tracks the same names as in the source file.\nLanguages are always copied.' },
+        { class='checkbox', name='name_subs_after_script', label='Name the softsub track after the script', value=c.name_subs_after_script, x=0, y=5, width=4, hint='Uses the subtitle file name (without extension). Otherwise the track is left unnamed.' },
+        spacer(6),
+        { class='label', label='Python:', x=0, y=7 },
+        { class='edit', name='python_exe', value=c.python_exe, x=1, y=7, width=3, hint=[[Python that has vapoursynth, vsjetpack and vsmuxtools installed.
 Leave blank to use python from PATH.]] },
-        { class='label', label='ffmpeg:', x=0, y=10 },
-        { class='edit', name='ffmpeg_exe', value=c.ffmpeg_exe, x=1, y=10, width=3, hint=[[Leave blank to use ffmpeg from PATH. ffprobe is picked up from the same folder.
+        { class='label', label='ffmpeg:', x=0, y=8 },
+        { class='edit', name='ffmpeg_exe', value=c.ffmpeg_exe, x=1, y=8, width=3, hint=[[Leave blank to use ffmpeg from PATH. ffprobe is picked up from the same folder.
 Everything else (mkvmerge, x264, x265, SvtAv1EncApp, opusenc, flac, qaac) is looked up on PATH.]] },
     }
     local btn, result = aegisub.dialog.display(d, {"Save", "Preview Filename", "Reset Defaults", "Cancel"}, {ok="Save", cancel="Cancel"})
@@ -516,6 +514,23 @@ local function audio_rows(v, y)
     }
 end
 
+local function video_opts(v)
+    return {
+        audio = v.audio, subs_on = v.subs, hardsub = v.sub_mode == "Hardsub", codec = v.codec, crf = v.crf,
+        target_kb = v.target_kb, height = v.height, bitdepth = v.bitdepth, fps = v.fps,
+        audio_codec = v.audio_codec, audio_bitrate = v.audio_bitrate,
+        use_aid = v.use_aid, aid = v.aid, square = v.square
+    }
+end
+
+local function audio_opts(v)
+    return {audio_codec = v.audio_codec, audio_bitrate = v.audio_bitrate, use_aid = v.use_aid, aid = v.aid}
+end
+
+local function images_opts(v)
+    return {image_format = v.image_format, quality = v.quality}
+end
+
 local function video_page(subs, sel)
     local build = function(v)
         if not list_has(VIDEO_CODECS, v.codec) then v.codec = VIDEO_CODECS[1] end
@@ -530,13 +545,13 @@ local function video_page(subs, sel)
             { class='floatedit', name='crf', value=v.crf, x=1, y=4, hint='Sets cq for NVENC' },
             { class='label', label='2-pass filesize (KB):', x=0, y=5 },
             { class='intedit', name='target_kb', value=v.target_kb, x=1, y=5, min=0, hint='0 = off. Anything above 0 encodes to that size instead of using CRF.' },
-            { class='label', label='Height (0 = source):', x=0, y=6 },
-            { class='intedit', name='height', value=v.height, x=1, y=6, min=0 },
-            { class='checkbox', name='square', label='Force square pixels', value=v.square, x=0, y=7, width=2, hint='Resizes anamorphic sources to 1:1 SAR.' },
-            { class='label', label='Bit depth:', x=0, y=8 },
-            { class='dropdown', name='bitdepth', items={"Source", "8", "10", "12"}, value=v.bitdepth, x=1, y=8 },
-            { class='label', label='Assert FPS:', x=0, y=9 },
-            { class='edit', name='fps', value=v.fps, x=1, y=9, hint='A fraction like 24000/1001. Empty = source fps. Relabels the rate, frames are never dropped or duplicated.' },
+            { class='label', label='Bit depth:', x=0, y=6 },
+            { class='dropdown', name='bitdepth', items={"Source", "8", "10", "12"}, value=v.bitdepth, x=1, y=6 },
+            { class='label', label='Assert FPS:', x=0, y=7 },
+            { class='edit', name='fps', value=v.fps, x=1, y=7, hint='A fraction like 24000/1001. Empty = source fps. Relabels the rate, frames are never dropped or duplicated.' },
+            { class='label', label='Height (0 = source):', x=0, y=8 },
+            { class='intedit', name='height', value=v.height, x=1, y=8, min=0 },
+            { class='checkbox', name='square', label='Force square pixels', value=v.square, x=0, y=9, width=2, hint='Resizes anamorphic sources to 1:1 SAR.' },
             spacer(10),
         }
         for _, e in ipairs(audio_rows(v, 11)) do table.insert(d, e) end
@@ -555,13 +570,7 @@ local function video_page(subs, sel)
     end
     local btn, v = mode_page("video", build, validate)
     if not btn then return end
-    local opts = {
-        audio = v.audio, subs_on = v.subs, hardsub = v.sub_mode == "Hardsub", codec = v.codec, crf = v.crf,
-        target_kb = v.target_kb, height = v.height, bitdepth = v.bitdepth, fps = v.fps,
-        audio_codec = v.audio_codec, audio_bitrate = v.audio_bitrate,
-        use_aid = v.use_aid, aid = v.aid, square = v.square
-    }
-    do_encode(subs, sel, "video", opts, btn == "Encode Each Line")
+    do_encode(subs, sel, "video", video_opts(v), btn == "Encode Each Line")
 end
 
 local function audio_page(subs, sel)
@@ -570,7 +579,7 @@ local function audio_page(subs, sel)
     end
     local btn, v = mode_page("audio", build)
     if not btn then return end
-    do_encode(subs, sel, "audio", {audio_codec = v.audio_codec, audio_bitrate = v.audio_bitrate, use_aid = v.use_aid, aid = v.aid}, btn == "Encode Each Line")
+    do_encode(subs, sel, "audio", audio_opts(v), btn == "Encode Each Line")
 end
 
 local function images_page(subs, sel)
@@ -584,7 +593,7 @@ local function images_page(subs, sel)
     end
     local btn, v = mode_page("images", build)
     if not btn then return end
-    do_encode(subs, sel, "images", {image_format = v.image_format, quality = v.quality}, btn == "Encode Each Line")
+    do_encode(subs, sel, "images", images_opts(v), btn == "Encode Each Line")
 end
 
 local function show_dialog(subs, sel)
@@ -601,8 +610,27 @@ local function show_dialog(subs, sel)
     end
 end
 
+-- skips the dialogs and reuses whatever that page was last encoded with
+local function shortcut(mode, to_opts, each_line)
+    return function(subs, sel)
+        do_encode(subs, sel, mode, to_opts(get_config(mode)), each_line)
+    end
+end
+
+local macros = {
+    {"Encode", script_description, show_dialog},
+    {"Repeat Last/All Lines/Video", "Encode video of the whole selection with the last used settings, no dialog", shortcut("video", video_opts, false)},
+    {"Repeat Last/All Lines/Audio", "Encode audio of the whole selection with the last used settings, no dialog", shortcut("audio", audio_opts, false)},
+    {"Repeat Last/All Lines/Images", "Export images of the whole selection with the last used settings, no dialog", shortcut("images", images_opts, false)},
+    {"Repeat Last/Each Line/Video", "Encode video of each selected line with the last used settings, no dialog", shortcut("video", video_opts, true)},
+    {"Repeat Last/Each Line/Audio", "Encode audio of each selected line with the last used settings, no dialog", shortcut("audio", audio_opts, true)},
+    {"Repeat Last/Each Line/Images", "Export images of each selected line with the last used settings, no dialog", shortcut("images", images_opts, true)},
+}
+
 if haveDepCtrl then
-    depctrl:registerMacro(show_dialog)
+    depctrl:registerMacros(macros)
 else
-    aegisub.register_macro(script_name, script_description, show_dialog)
+    for _, m in ipairs(macros) do
+        aegisub.register_macro(script_name .. "/" .. m[1], m[2], m[3])
+    end
 end
