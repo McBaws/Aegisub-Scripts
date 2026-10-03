@@ -16,7 +16,7 @@ script_name = 'Encode'
 script_description = 'Encode clips, audio or image sequences from the current selection'
 script_author = 'McBaws'
 script_namespace = "baws.Encode"
-script_version = '2.0.1'
+script_version = '2.0.2'
 
 local haveDepCtrl, DependencyControl, depctrl = pcall(require, "l0.DependencyControl")
 local ConfigHandler, EncodeVS, config
@@ -100,6 +100,10 @@ if haveDepCtrl then
 end
 
 local function get_config(section)
+    if haveDepCtrl then
+        config:read()
+        config:updateInterface()
+    end
     local c = {}
     for k, v in pairs(config_schema[section]) do
         c[k] = v.value
@@ -113,7 +117,10 @@ local function update_config(section, new_values)
             config_schema[section][k].value = v
         end
     end
-    if haveDepCtrl then config:write() end
+    if haveDepCtrl then
+        config:updateConfiguration(new_values, section)
+        config:write()
+    end
 end
 
 local function strip_slash(p)
