@@ -1,5 +1,6 @@
-__version__ = "1.0.1"
+__version__ = "1.0.2"
 
+import glob
 import json
 import os
 import re
@@ -394,6 +395,52 @@ def index_in_subprocess(kind, src, cache, rep, label):
         raise JobError(f"Indexing failed:\n{''.join(output)[-3000:]}")
     rep.set(100)
 
+def drop_index(path):
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+
+
+def index_outdated(cache, src):
+    # source got replaced or re-encoded after the index was made
+    try:
+        return os.path.getmtime(src) > os.path.getmtime(cache)
+    except OSError:
+        return False
+
+
+def looks_like_index_error(e):
+    return "index" in str(e).lower()
+
+
+def open_indexed(kind, src, cache, opener, rep, label):
+    if index_outdated(cache, src):
+        rep.log(f"{os.path.basename(src)} changed since it was indexed, reindexing")
+        drop_index(cache)
+    fresh = not os.path.exists(cache)
+    if fresh:
+        index_in_subprocess(kind, src, cache, rep, label)
+    try:
+        return opener()
+    except vs.Error as e:
+        # a fresh index failing means something else is wrong, don't loop on it
+        if fresh or not looks_like_index_error(e):
+            raise
+        rep.log(f"Index doesn't match the source anymore ({e}), reindexing")
+        drop_index(cache)
+        index_in_subprocess(kind, src, cache, rep, label)
+        return opener()
+
+
+def drop_stale_bs(vscache, src, rep):
+    # bestsource keeps one .bsindex per track next to the base name
+    base = bs_cache_base(vscache, src)
+    for p in glob.glob(glob.escape(base) + ".*.bsindex"):
+        if index_outdated(p, src):
+            rep.log(f"{os.path.basename(src)} changed since it was indexed, dropping {os.path.basename(p)}")
+            drop_index(p)
+
 
 class bs_progress:
     # bestsource reports indexing progress as vs log messages
@@ -458,34 +505,46 @@ def load_video(job, rep):
     os.makedirs(vscache, exist_ok=True)
     indexer = job["settings"]["indexer"]
 
-    # Auto and LWI reuse aegisub's lwi when there is one. if not, Auto makes an ffindex and LWI makes an lwi
+    # Auto and LWI reuse aegisub's lwi when there is a usable one. if not, Auto makes an ffindex and LWI makes an lwi
     if indexer in ("Auto", "LWI"):
         lwi = find_aegisub_lwi(job)
+        if lwi and index_outdated(lwi, video):
+            rep.log("Aegisub's lwi index is older than the video, not reusing it")
+            lwi = None
         if lwi:
             need_plugin("lsmas", "LSMASH", "vapoursynth-lsmas")
             need_param("lsmas", "LWLibavSource", "cachefile", "lsmas")
-            rep.log(f"Reusing Aegisub's lwi index: {os.path.basename(lwi)}")
-            return core.lsmas.LWLibavSource(source=video, cachefile=lwi), "LSMASH (Aegisub's index)"
+            try:
+                clip = core.lsmas.LWLibavSource(source=video, cachefile=lwi)
+                rep.log(f"Reusing Aegisub's lwi index: {os.path.basename(lwi)}")
+                return clip, "LSMASH (Aegisub's index)"
+            except vs.Error as e:
+                if not looks_like_index_error(e):
+                    raise
+                rep.log(f"Aegisub's lwi index doesn't match the video ({e}), not reusing it")
         indexer = "FFMS2" if indexer == "Auto" else "LWI"
 
     if indexer == "FFMS2":
         need_plugin("ffms2", "FFMS2", "vapoursynth-ffms2")
         cache = os.path.join(vscache, vssource_cache_name(video, ".ffindex"))
-        if not os.path.exists(cache):
-            index_in_subprocess("ffms2", video, cache, rep, "Indexing with FFMS2 (one-off per file)")
-        return core.ffms2.Source(source=video, cachefile=cache), "FFMS2"
+        clip = open_indexed("ffms2", video, cache,
+                            lambda: core.ffms2.Source(source=video, cachefile=cache),
+                            rep, "Indexing with FFMS2 (one-off per file)")
+        return clip, "FFMS2"
 
     if indexer == "LWI":
         need_plugin("lsmas", "LSMASH", "vapoursynth-lsmas")
         need_param("lsmas", "LWLibavSource", "cachefile", "lsmas")
         # aegisub's naming, so aegisub's vs provider can pick it up too
         cache = os.path.join(vscache, lwi_cache_name(video_name_candidates(job)[0]))
-        if not os.path.exists(cache):
-            index_in_subprocess("lsmas", video, cache, rep, "Indexing with LSMASH (one-off per file)")
-        return core.lsmas.LWLibavSource(source=video, cachefile=cache), "LSMASH"
+        clip = open_indexed("lsmas", video, cache,
+                            lambda: core.lsmas.LWLibavSource(source=video, cachefile=cache),
+                            rep, "Indexing with LSMASH (one-off per file)")
+        return clip, "LSMASH"
 
     if indexer == "BestSource":
         need_plugin("bs", "BestSource", "vapoursynth-bestsource")
+        drop_stale_bs(vscache, video, rep)
         with bs_progress(rep, "Opening with BestSource (indexes on first use)"):
             clip = core.bs.VideoSource(source=video, cachemode=3, cachepath=bs_cache_base(vscache, video), showprogress=True)
         return clip, "BestSource"
@@ -501,6 +560,7 @@ def load_audio(job, rep):
     s = job["settings"]
     o = job["opts"]
     track = -int(o.get("aid", 1)) if o.get("use_aid") else -1
+    drop_stale_bs(job["vscache"], src, rep)
     try:
         with bs_progress(rep, "Loading audio (indexes on first use)"):
             return core.bs.AudioSource(source=src, track=track, cachemode=3, cachepath=bs_cache_base(job["vscache"], src), showprogress=True)

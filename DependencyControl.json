@@ -187,19 +187,19 @@
       "description": "VapourSynth worker used by baws.Encode",
       "channels": {
         "stable": {
-          "version": "1.0.1",
-          "released": "2026-10-01",
+          "version": "1.0.2",
+          "released": "2026-10-04",
           "default": true,
           "files": [
             {
               "name": ".lua",
               "url": "@{fileBaseUrl}@{fileName}",
-              "sha1": "c012b7ff965c417425c6b2bc7d33086171ea78f1"
+              "sha1": "88d090b2f189e2e7212de0c028eadfe8b61b9a29"
             },
             {
               "name": "/encode_vs.py",
               "url": "@{fileBaseUrl}@{fileName}",
-              "sha1": "017b854ec0fab6ce722188113172c7781cdd18e0"
+              "sha1": "737ecba4aab6f6c7a4ac558c457fd80d7cce3ad4"
             }
           ]
         }
@@ -210,6 +210,9 @@
         ],
         "1.0.1": [
           "Fix audio index file structure"
+        ],
+        "1.0.2": [
+          "Fix stale index handling"
         ]
       }
     }
