@@ -9,7 +9,7 @@ You should have this installed to receive automatic updates for my scripts.
 
 ### Encode
 
-This script allows you to encode the files you have open in Aegisub. You can output any combination of video, audio, and subtitles, and also output the video as an image sequence.
+This script allows you to encode the files you have open in Aegisub. You can output any combination of video, audio, and subtitles (softsub or hardsub), and also output the video as an image sequence.
 
 This script is very fast, with high quality processing and scaling. It can reuse any indexes created by the VapourSynth source in Aegisub, and any indexes it generates itself will be reused on subsequent runs.
 
