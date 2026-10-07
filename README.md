@@ -2,7 +2,8 @@
 
 ### DependencyControl
 
-My scripts will use [DependencyControl](https://github.com/TypesettingTools/DependencyControl) for versioning and dependency management. You should have this installed to receive automatic updates for my scripts.
+My scripts will use [DependencyControl](https://github.com/TypesettingTools/DependencyControl) for versioning and dependency management. \
+You should have this installed to receive automatic updates for my scripts.
 
 ## Scripts
 
@@ -10,9 +11,9 @@ My scripts will use [DependencyControl](https://github.com/TypesettingTools/Depe
 
 This script allows you to encode the files you have open in Aegisub. You can output any combination of video, audio, and subtitles, and also output the video as an image sequence.
 
-This script is very fast, with high quality processing and accurate scaling. It can reuse any indexes created by the VapourSynth source in Aegisub, and will reuse any indexes generated the first time around on subsequent runs.
+This script is very fast, with high quality processing and scaling. It can reuse any indexes created by the VapourSynth source in Aegisub, and any indexes it generates itself will be reused on subsequent runs.
 
-You can set the desired output codecs, image size, bit depth, crf, target filesize, fps, audio bitrate, etc. of the output.
+You can set the desired output codecs, image size, bit depth, crf, target filesize, fps, audio bitrate of the output and more.
 
 The main encoding logic uses VapourSynth, so this script requires Python to be installed, alongside these packages:
 - vsjetpack >= 2.2.4
@@ -20,7 +21,7 @@ The main encoding logic uses VapourSynth, so this script requires Python to be i
 - vsmuxtools >= 0.4.4
 - vapoursynth >= 80
 
-They can be installed with this command:
+You can install them with this command:
 
 ```bash
 pip install "vsjetpack[full]" muxtools vsmuxtools --extra-index-url https://jaded-encoding-thaumaturgy.github.io/vs-wheels/simple
