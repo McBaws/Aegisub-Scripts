@@ -16,7 +16,7 @@ script_name = 'Encode'
 script_description = 'Encode clips, audio or image sequences from the current selection'
 script_author = 'McBaws'
 script_namespace = "baws.Encode"
-script_version = '2.0.2'
+script_version = '2.1.0'
 
 local haveDepCtrl, DependencyControl, depctrl = pcall(require, "l0.DependencyControl")
 local ConfigHandler, EncodeVS, config
@@ -26,7 +26,7 @@ if haveDepCtrl then
         {
             {"a-mo.ConfigHandler", version="1.1.4", url="https://github.com/TypesettingTools/Aegisub-Motion",
              feed="https://raw.githubusercontent.com/TypesettingTools/Aegisub-Motion/DepCtrl/DependencyControl.json"},
-            {"baws.EncodeVS", version="1.0.0", url="https://github.com/McBaws/Aegisub-Scripts",
+            {"baws.EncodeVS", version="1.0.3", url="https://github.com/McBaws/Aegisub-Scripts",
              feed="https://raw.githubusercontent.com/McBaws/Aegisub-Scripts/stable/DependencyControl.json"}
         }
     }
@@ -69,6 +69,7 @@ local config_schema = {
         aid = {class="intedit", value=1, config=true}
     },
     images = {
+        subs = {class="checkbox", value=false, config=true},
         image_format = {class="dropdown", value="jpg", config=true},
         quality = {class="intedit", value=95, config=true}
     },
@@ -76,7 +77,7 @@ local config_schema = {
         python_exe = {class="edit", value="", config=true},
         ffmpeg_exe = {class="edit", value="", config=true},
         indexer = {class="dropdown", value="Auto", config=true},
-        output_path = {class="edit", value="?script", config=true},
+        output_path = {class="edit", value="$scriptdir$", config=true},
         filename = {class="edit", value="$video$ [$sframe$-$eframe$]", config=true},
         keep_track_names = {class="checkbox", value=true, config=true},
         name_subs_after_script = {class="checkbox", value=false, config=true}
@@ -273,6 +274,16 @@ local NAME_TOKENS = {
     {"$etime$", "end time"},
 }
 
+local DIR_TOKENS = {
+    {"$scriptdir$", "folder the subtitle file is in"},
+    {"$videodir$", "folder the video is in"},
+}
+
+local UNAVAILABLE = {
+    scriptdir = "save the subtitle file first",
+    videodir = "no video loaded",
+}
+
 local function time_token(ms)
     if not ms then return "" end
     local h = math.floor(ms / 3600000)
@@ -287,30 +298,89 @@ local function sanitize(name)
     return name
 end
 
-local function make_name(template, rng)
+-- aegisub hands back the ?tag untouched when it has nothing for it (unsaved script, no video)
+local function known_dir(tag)
+    local d = aegisub.decode_path(tag)
+    if not d or d == "" or d:sub(1, 1) == "?" then return nil end
+    return strip_slash(d)
+end
+
+-- old configs used aegisub's ?script / ?video, swap them for the tokens
+local function migrate_path(p)
+    for tag, tok in pairs({script="$scriptdir$", video="$videodir$"}) do
+        local rest = p:match("^%?" .. tag .. "(.*)$")
+        if rest and (rest == "" or rest:match("^[/\\]")) then return tok .. rest end
+    end
+    return p
+end
+
+-- full_dirs: whole folder path (output path) or just the folder's name (filename)
+-- false means the token exists but there's nothing to fill it with right now
+local function token_values(rng, full_dirs)
     local vidfile = aegisub.project_properties().video_file or ""
-    local video = vidfile:sub(1, 7) == "?dummy:" and "dummy" or get_filename(vidfile)
+    local dummy = vidfile:sub(1, 7) == "?dummy:"
+    local video = dummy and "dummy" or get_filename(vidfile)
     local script = get_filename(aegisub.file_name())
-    local values = {
+    local function dir(d)
+        if not d then return false end
+        return full_dirs and d or (d:match("[^/\\]+$") or d)
+    end
+    return {
         video = video ~= "" and video or "video",
         script = script ~= "" and script or "untitled",
         sframe = rng.first and tostring(rng.first) or "",
         eframe = rng["end"] and tostring(rng["end"] - 1) or "",
         stime = time_token(rng.start_ms),
         etime = time_token(rng.end_ms),
+        scriptdir = dir(known_dir("?script")),
+        videodir = dir(not dummy and vidfile ~= "" and known_dir("?video")),
     }
-    local name = template:gsub("%$(%w+)%$", function(k)
+end
+
+-- returns the filled string and the first token that had nothing to fill it with
+local function fill(template, values)
+    local missing
+    local out = template:gsub("%$(%w+)%$", function(k)
         local v = values[k:lower()]
         if v == nil then return "$" .. k .. "$" end
+        if v == false then
+            missing = missing or k:lower()
+            return ""
+        end
         return v
     end)
-    name = sanitize(name)
+    return out, missing
+end
+
+local function make_name(template, rng)
+    local name = sanitize((fill(template, token_values(rng, false))))
     return name ~= "" and name or "clip"
 end
 
-local function token_help()
-    local help = {"Tokens (the extension is added for you):"}
+local function make_path(template, rng)
+    template = migrate_path(template)
+    if template:match("^%s*$") then template = "$scriptdir$" end
+    local p, missing = fill(template, token_values(rng, true))
+    if missing then
+        return nil, string.format("$%s$ isn't available, %s", missing, UNAVAILABLE[missing] or "")
+    end
+    p = p:gsub("^%s+", ""):gsub("%s+$", "")
+    -- other aegisub paths like ?user still work
+    if p:sub(1, 1) == "?" then p = aegisub.decode_path(p) end
+    p = strip_slash(p)
+    if p == "" or p:sub(1, 1) == "?" then return nil, "couldn't work out the output path" end
+    return p
+end
+
+local function token_help(for_path)
+    local help = {for_path and "Tokens:" or "Tokens (the extension is added for you):"}
+    for _, t in ipairs(DIR_TOKENS) do
+        table.insert(help, t[1] .. "  " .. (for_path and t[2] or "name of the " .. t[2]))
+    end
     for _, t in ipairs(NAME_TOKENS) do table.insert(help, t[1] .. "  " .. t[2]) end
+    if for_path then
+        table.insert(help, "Aegisub paths like ?user also work. Missing folders get created.")
+    end
     return table.concat(help, "\n")
 end
 
@@ -335,10 +405,10 @@ local function do_encode(subs, sel, mode, opts, each_line)
         elseif opts.codec == "WebM (VP9 + Opus)" then container = "webm" end
     end
 
-    -- softsubs only fit in mkv, everything else gets burned in
+    -- softsubs only fit in mkv, everything else gets burned in. images are always burned in
     opts.subs = "none"
-    if mode == "video" and opts.subs_on then
-        opts.subs = (opts.hardsub or container ~= "mkv") and "hard" or "soft"
+    if (mode == "video" or mode == "images") and opts.subs_on then
+        opts.subs = (mode == "images" or opts.hardsub or container ~= "mkv") and "hard" or "soft"
     end
     opts.subs_on = nil
 
@@ -378,10 +448,6 @@ local function do_encode(subs, sel, mode, opts, each_line)
         if s < e then table.insert(spans, {s, e}) end
     end
 
-    local out_dir = aegisub.decode_path(cfg.output_path ~= "" and cfg.output_path or "?script")
-    if out_dir == "" or out_dir:sub(1, 1) == "?" then out_dir = script_dir end
-    out_dir = strip_slash(out_dir)
-
     local used = {}
     local ext
     if mode == "audio" then ext = AUDIO_EXT[opts.audio_codec] or "m4a"
@@ -397,14 +463,20 @@ local function do_encode(subs, sel, mode, opts, each_line)
         if mode ~= "audio" and r["end"] <= r.first then
             aegisub.log(2, "Skipping %d-%d ms, it doesn't cover a whole frame.\n", sp[1], sp[2])
         else
+            -- output path can have range tokens in it too, so it's worked out per range
+            local out_dir, err = make_path(cfg.output_path, r)
+            if not out_dir then
+                message("Output path: " .. err)
+                return
+            end
             local name = make_name(cfg.filename, r)
             -- two lines giving the same name shouldn't overwrite each other
             local base, n = name, 2
-            while used[name:lower()] do
+            while used[(out_dir .. pathsep .. name):lower()] do
                 name = string.format("%s (%d)", base, n)
                 n = n + 1
             end
-            used[name:lower()] = true
+            used[(out_dir .. pathsep .. name):lower()] = true
             if mode == "images" then
                 r.outdir = out_dir .. pathsep .. name
             else
@@ -429,10 +501,79 @@ local function do_encode(subs, sel, mode, opts, each_line)
     })
 end
 
-local function preview_name(subs, sel, template)
-    if not sel or #sel == 0 then return "(select a line to see a preview)" end
+local function preview_range(subs, sel)
+    if not sel or #sel == 0 then return nil end
     local line = subs[sel[1]]
-    return make_name(template, make_range(line.start_time, line.end_time))
+    return make_range(line.start_time, line.end_time)
+end
+
+local function preview_name(subs, sel, template)
+    local r = preview_range(subs, sel)
+    if not r then return "(select a line to see a preview)" end
+    return make_name(template, r)
+end
+
+local function preview_path(subs, sel, template)
+    local r = preview_range(subs, sel)
+    if not r then return "(select a line to see a preview)" end
+    local p, err = make_path(template, r)
+    return p or "(" .. err .. ")"
+end
+
+-- previews longer than this get split over extra rows so the dialog doesn't get super wide
+local PREVIEW_WIDTH = 100
+
+local function utf8_chars(s)
+    local out = {}
+    for ch in s:gmatch("[%z\1-\127\194-\244][\128-\191]*") do table.insert(out, ch) end
+    return out
+end
+
+-- cjk, kana, hangul and fullwidth forms are roughly two latin chars wide
+local function char_width(ch)
+    if #ch < 3 then return 1 end
+    if #ch > 3 then return 2 end
+    local b1, b2, b3 = ch:byte(1, 3)
+    local cp = (b1 % 16) * 4096 + (b2 % 64) * 64 + (b3 % 64)
+    if (cp >= 0x2E80 and cp <= 0xA4CF) or (cp >= 0xAC00 and cp <= 0xD7A3)
+        or (cp >= 0xF900 and cp <= 0xFAFF) or (cp >= 0xFF00 and cp <= 0xFF60) then
+        return 2
+    end
+    return 1
+end
+
+local BREAK_AFTER = {["/"]=true, ["\\"]=true, [" "]=true, ["-"]=true, ["_"]=true, ["."]=true, ["]"]=true, [")"]=true}
+
+local function wrap(s, width)
+    local chars = utf8_chars(s)
+    local lines, start = {}, 1
+    while start <= #chars do
+        local w, i, last_break = 0, start, nil
+        while i <= #chars do
+            local cw = char_width(chars[i])
+            if w + cw > width and i > start then break end
+            w = w + cw
+            if BREAK_AFTER[chars[i]] then last_break = i end
+            i = i + 1
+        end
+        local cut = i - 1
+        -- prefer breaking after a separator if there's one in the back half of the line, otherwise just cut
+        if i <= #chars and last_break and last_break - start >= (cut - start) / 2 then cut = last_break end
+        table.insert(lines, table.concat(chars, "", start, cut))
+        start = cut + 1
+    end
+    if #lines == 0 then lines[1] = "" end
+    return lines
+end
+
+-- adds a "Preview:" row plus however many extra rows the text needs, returns the next free y
+local function add_preview(d, y, text)
+    table.insert(d, { class='label', label='Preview:', x=0, y=y })
+    for _, ln in ipairs(wrap(text, PREVIEW_WIDTH)) do
+        table.insert(d, { class='label', label=ln, x=1, y=y, width=3 })
+        y = y + 1
+    end
+    return y
 end
 
 -- aegisub's grid collapses empty rows, so a label with a space is what gives a visible gap
@@ -446,36 +587,52 @@ local function show_config_dialog(subs, sel, pending)
     local known = false
     for _, x in ipairs(INDEXERS) do if x == c.indexer then known = true end end
     if not known then c.indexer = "Auto" end
-    local d = {
-        { class='label', label='Video Indexer:', x=0, y=0 },
-        { class='dropdown', name='indexer', items=INDEXERS, value=c.indexer, x=1, y=0, width=3, hint=[[Auto: reuse Aegisub's lwi index if there is one, otherwise make an ffindex.
+    c.output_path = migrate_path(c.output_path)
+    -- rows are counted as we go since the previews can take up more than one
+    local d, y = {}, 0
+    local function add(e)
+        e.y = y
+        table.insert(d, e)
+    end
+
+    add({ class='label', label='Video Indexer:', x=0 })
+    add({ class='dropdown', name='indexer', items=INDEXERS, value=c.indexer, x=1, width=3, hint=[[Auto: reuse Aegisub's lwi index if there is one, otherwise make an ffindex.
 LWI: reuse Aegisub's lwi index if there is one, otherwise make an lwi.
 FFMS2 / BestSource: always use that indexer.
-Indexes are kept in Aegisub's vscache folder.]] },
-        { class='label', label='Output Path:', x=0, y=1 },
-        { class='edit', name='output_path', value=c.output_path, x=1, y=1, width=3, hint='Use ?script for the subtitle folder' },
-        { class='label', label='Filename:', x=0, y=2 },
-        { class='edit', name='filename', value=c.filename, x=1, y=2, width=3, hint=token_help() },
-        { class='label', label='Preview:', x=0, y=3 },
-        { class='label', label=preview_name(subs, sel, c.filename), x=1, y=3, width=3 },
-        { class='checkbox', name='keep_track_names', label='Copy track names from the source', value=c.keep_track_names, x=0, y=4, width=4, hint='Gives the video and audio tracks the same names as in the source file.\nLanguages are always copied.' },
-        { class='checkbox', name='name_subs_after_script', label='Name the softsub track after the script', value=c.name_subs_after_script, x=0, y=5, width=4, hint='Uses the subtitle file name (without extension). Otherwise the track is left unnamed.' },
-        spacer(6),
-        { class='label', label='Python:', x=0, y=7 },
-        { class='edit', name='python_exe', value=c.python_exe, x=1, y=7, width=3, hint=[[Python that has vapoursynth, vsjetpack and vsmuxtools installed.
-Leave blank to use python from PATH.]] },
-        { class='label', label='ffmpeg:', x=0, y=8 },
-        { class='edit', name='ffmpeg_exe', value=c.ffmpeg_exe, x=1, y=8, width=3, hint=[[Leave blank to use ffmpeg from PATH. ffprobe is picked up from the same folder.
-Everything else (mkvmerge, x264, x265, SvtAv1EncApp, opusenc, flac, qaac) is looked up on PATH.]] },
-    }
-    local btn, result = aegisub.dialog.display(d, {"Save", "Preview Filename", "Reset Defaults", "Cancel"}, {ok="Save", cancel="Cancel"})
+Indexes are kept in Aegisub's vscache folder.]] })
+    y = y + 1
+
+    add({ class='label', label='Output Path:', x=0 })
+    add({ class='edit', name='output_path', value=c.output_path, x=1, width=3, hint=token_help(true) })
+    y = add_preview(d, y + 1, preview_path(subs, sel, c.output_path))
+
+    add({ class='label', label='Filename:', x=0 })
+    add({ class='edit', name='filename', value=c.filename, x=1, width=3, hint=token_help(false) })
+    y = add_preview(d, y + 1, preview_name(subs, sel, c.filename))
+
+    add({ class='checkbox', name='keep_track_names', label='Copy track names from the source', value=c.keep_track_names, x=0, width=4, hint='Gives the video and audio tracks the same names as in the source file.\nLanguages are always copied.' })
+    y = y + 1
+    add({ class='checkbox', name='name_subs_after_script', label='Name the softsub track after the script', value=c.name_subs_after_script, x=0, width=4, hint='Uses the subtitle file name (without extension). Otherwise the track is left unnamed.' })
+    y = y + 1
+    add(spacer(y))
+    y = y + 1
+
+    add({ class='label', label='Python:', x=0 })
+    add({ class='edit', name='python_exe', value=c.python_exe, x=1, width=3, hint=[[Python that has vapoursynth, vsjetpack and vsmuxtools installed.
+Leave blank to use python from PATH.]] })
+    y = y + 1
+    add({ class='label', label='ffmpeg:', x=0 })
+    add({ class='edit', name='ffmpeg_exe', value=c.ffmpeg_exe, x=1, width=3, hint=[[Leave blank to use ffmpeg from PATH. ffprobe is picked up from the same folder.
+Everything else (mkvmerge, x264, x265, SvtAv1EncApp, opusenc, flac, qaac) is looked up on PATH.]] })
+
+    local btn, result = aegisub.dialog.display(d, {"Save", "Refresh Preview", "Reset Defaults", "Cancel"}, {ok="Save", cancel="Cancel"})
     if btn == "Save" then
         update_config("main", result)
     elseif btn == "Reset Defaults" then
         -- only fills the dialog in, nothing is saved until Save
         return show_config_dialog(subs, sel, defaults("main"))
-    elseif btn == "Preview Filename" then
-        -- reopen with what they typed so the preview label updates
+    elseif btn == "Refresh Preview" then
+        -- reopen with what they typed so the preview labels update
         return show_config_dialog(subs, sel, result)
     end
 end
@@ -489,7 +646,7 @@ end
 local function mode_page(section, build, validate)
     local values = get_config(section)
     while true do
-        local btn, result = aegisub.dialog.display(build(values), {"Encode", "Encode Each Line", "Reset Defaults", "Cancel"}, {ok="Encode", cancel="Cancel"})
+        local btn, result = aegisub.dialog.display(build(values), {"Encode", "Encode Each Line", "Reset Defaults", "Save and Cancel", "Cancel"}, {ok="Encode", cancel="Cancel"})
         if not btn or btn == "Cancel" then return nil end
         values = result
         if btn == "Reset Defaults" then
@@ -502,6 +659,8 @@ local function mode_page(section, build, validate)
             message(err)
         else
             update_config(section, result)
+            -- keeps the settings (and the Repeat Last macros) without encoding anything
+            if btn == "Save and Cancel" then return nil end
             return btn, result
         end
         ::continue::
@@ -533,7 +692,7 @@ local function audio_opts(v)
 end
 
 local function images_opts(v)
-    return {image_format = v.image_format, quality = v.quality}
+    return {subs_on = v.subs, image_format = v.image_format, quality = v.quality}
 end
 
 local function video_page(subs, sel)
@@ -590,10 +749,12 @@ end
 local function images_page(subs, sel)
     local build = function(v)
         return {
-            { class='label', label='Image format:', x=0, y=0 },
-            { class='dropdown', name='image_format', items={"jpg", "png"}, value=v.image_format, x=1, y=0 },
-            { class='label', label='Quality:', x=0, y=1 },
-            { class='intedit', name='quality', value=v.quality, x=1, y=1, min=1, max=100, hint='1-100, jpg only' },
+            { class='checkbox', name='subs', label='Include subtitles', value=v.subs, x=0, y=0, width=2, hint='Always burned in' },
+            spacer(1),
+            { class='label', label='Image format:', x=0, y=2 },
+            { class='dropdown', name='image_format', items={"jpg", "png"}, value=v.image_format, x=1, y=2 },
+            { class='label', label='Quality:', x=0, y=3 },
+            { class='intedit', name='quality', value=v.quality, x=1, y=3, min=1, max=100, hint='1-100, jpg only' },
         }
     end
     local btn, v = mode_page("images", build)

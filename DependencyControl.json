@@ -129,14 +129,14 @@
       "description": "Encode clips, audio or image sequences from the selected lines, frame-exact via VapourSynth.",
       "channels": {
         "stable": {
-          "version": "2.0.2",
-          "released": "2026-10-02",
+          "version": "2.1.0",
+          "released": "2026-10-07",
           "default": true,
           "files": [
             {
               "name": ".lua",
               "url": "@{fileBaseUrl}@{fileName}",
-              "sha1": "bba7fa97cdee7f7f4136ed1479eb367b6eede010"
+              "sha1": "ac33ac9e9a9e76164da4a8f31575392ba7619e64"
             }
           ],
           "requiredModules": [
@@ -174,6 +174,9 @@
         ],
         "2.0.2": [
           "Fix config"
+        ],
+        "2.1.0": [
+          "Allow hardsubbing image sequence, improve filename preview, add save and cancel button"
         ]
       }
     }
@@ -187,19 +190,19 @@
       "description": "VapourSynth worker used by baws.Encode",
       "channels": {
         "stable": {
-          "version": "1.0.2",
-          "released": "2026-10-04",
+          "version": "1.0.3",
+          "released": "2026-10-07",
           "default": true,
           "files": [
             {
               "name": ".lua",
               "url": "@{fileBaseUrl}@{fileName}",
-              "sha1": "88d090b2f189e2e7212de0c028eadfe8b61b9a29"
+              "sha1": "3dec9077bc161d6532230db344ffc54c17f0ed25"
             },
             {
               "name": "/encode_vs.py",
               "url": "@{fileBaseUrl}@{fileName}",
-              "sha1": "737ecba4aab6f6c7a4ac558c457fd80d7cce3ad4"
+              "sha1": "f06b13601ba30c18e63f701eba4b6599b8251b9c"
             }
           ]
         }
@@ -213,6 +216,9 @@
         ],
         "1.0.2": [
           "Fix stale index handling"
+        ],
+        "1.0.3": [
+          "Create parent folder instead of failing"
         ]
       }
     }

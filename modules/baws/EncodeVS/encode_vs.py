@@ -1,4 +1,4 @@
-__version__ = "1.0.2"
+__version__ = "1.0.3"
 
 import glob
 import json
@@ -1165,6 +1165,7 @@ def run(job, rep):
             rep.total = len(ranges)
             for rng in ranges:
                 current = rng["outfile"]
+                make_parent(current)
                 ws.begin_range()
                 setup_muxtools(ws)
                 do_audio_range(anode, rng, job, ws, tools, rep)
@@ -1226,6 +1227,7 @@ def run(job, rep):
         rep.total = sum(r["end"] - r["first"] for r in ranges) * (2 if two_pass else 1)
         for rng in ranges:
             current = rng["outfile"]
+            make_parent(current)
             ws.begin_range()
             setup_muxtools(ws)
             do_video_range(clip, src, anode, rng, job, ws, tools, rep)
@@ -1244,6 +1246,11 @@ def run(job, rep):
         raise
     finally:
         ws.close()
+
+
+def make_parent(path):
+    # the output path can have tokens in it now, so the folder might not exist yet
+    os.makedirs(os.path.dirname(path), exist_ok=True)
 
 
 def setup_muxtools(ws):

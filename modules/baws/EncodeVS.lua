@@ -1,4 +1,4 @@
--- version="1.0.2"
+-- version="1.0.3"
 -- Copyright (c) 2026, McBaws
 -- Ships encode_vs.py (the VapourSynth worker used by baws.Encode) and tells the macro where it is.
 
@@ -7,7 +7,7 @@ local depctrl
 if haveDepCtrl then
     depctrl = DependencyControl {
         name = "EncodeVS",
-        version = "1.0.0",
+        version = "1.0.3",
         description = "VapourSynth worker for baws.Encode",
         author = "McBaws",
         url = "https://github.com/McBaws/Aegisub-Scripts",
@@ -22,7 +22,7 @@ local dir = here:match("^(.*)[/\\][^/\\]+$") or "."
 local sep = package.config:sub(1, 1)
 
 local EncodeVS = {
-    version = "1.0.0",
+    version = "1.0.3",
     script_path = dir .. sep .. "EncodeVS" .. sep .. "encode_vs.py"
 }
 
