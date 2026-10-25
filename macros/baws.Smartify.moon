@@ -18,19 +18,14 @@ export script_name = "Smartify"
 export script_description = [[Change all your "normal" quotes, ellipses, and dashes into “smart” ones]]
 export script_author = "McBaws"
 export script_namespace = "baws.Smartify"
-export script_version = "1.0.0"
+export script_version = "1.1.0"
 
 havedc, DependencyControl = pcall require, "l0.DependencyControl"
-local dep, ConfigHandler, config
+local dep
 if havedc
     dep = DependencyControl{
         feed: "https://raw.githubusercontent.com/McBaws/Aegisub-Scripts/stable/DependencyControl.json",
-        {
-            {"a-mo.ConfigHandler", version: "1.1.4", url: "https://github.com/TypesettingTools/Aegisub-Motion",
-             feed: "https://raw.githubusercontent.com/TypesettingTools/Aegisub-Motion/DepCtrl/DependencyControl.json"}
-        }
     }
-    ConfigHandler = dep\requireModules!
 
 re = require 'aegisub.re'
 
@@ -46,8 +41,86 @@ config_diag = {
     }
 }
 
+-- defaults come straight from the dialog, grabbed before anything changes its values
+DEFAULTS = {k, v.value for k, v in pairs config_diag.main when v.config}
+
+-- settings only keep what differs from the defaults, so changing a default later still reaches people
+-- without depctrl they just live in here until aegisub closes
+local config
+session = {}
+
+store_settings = (store) ->
+    unless config
+        session = store
+        return true
+    -- depctrl 0.6 only ever adds keys when it writes, so clear the section first or old values stick around
+    ok, err = config\delete!
+    return ok, err unless ok
+    return true if next(store) == nil
+    config.c[k] = v for k, v in pairs store
+    config\write!
+
 if havedc
-    config = ConfigHandler config_diag, dep.configFile, false, script_version, dep.configDir
+    config = dep\getConfigHandler DEFAULTS, "settings"
+
+    -- a-mo saved to <depctrl configDir>/<configFile>. newer depctrl doesn't expose configDir on the
+    -- script's record, so there a-mo fell back to ?user, older depctrl gives ?user/config. check them all
+    find_old_config = ->
+        okjson, json = pcall require, "json"
+        json = require "l0.dkjson" unless okjson
+        name = dep.configFile or "#{script_namespace}.json"
+        seen = {}
+        for dir in *{dep.configDir or "?user", "?user", "?user/config"}
+            path = aegisub.decode_path "#{dir}/#{name}"
+            f = not seen[path] and io.open path, "r"
+            seen[path] = true
+            if f
+                text = f\read "*a"
+                f\close!
+                ok, old = pcall json.decode, text
+                return path, old if ok and type(old) == "table" and old.__version != nil
+        return
+
+    -- one time move from the old a-mo file, which looks like {"main": {...}, "__version": ...}
+    -- anything already saved with the new handler wins, the old values only fill in the rest
+    path, old = find_old_config!
+    if path
+        main = type(old.main) == "table" and old.main or {}
+        saved = config.userConfig or {}
+        store = {}
+        for k, v in pairs DEFAULTS
+            if saved[k] != nil
+                store[k] = saved[k]
+            elseif main[k] != nil and main[k] != v
+                store[k] = main[k]
+        os.remove path
+        store_settings store
+
+get_configuration = ->
+    opts = {}
+    for k, v in pairs DEFAULTS
+        opts[k] = if config
+            config.c[k]
+        elseif session[k] != nil
+            session[k]
+        else
+            v
+    opts
+
+-- new values go over the current ones, anything the script doesn't know about is ignored
+save_configuration = (new) ->
+    store = {}
+    for k, v in pairs get_configuration!
+        v = new[k] if new[k] != nil
+        store[k] = v if v != DEFAULTS[k]
+    ok, err = store_settings store
+    aegisub.log 2, "Couldn't save the settings: #{err}\n" unless ok
+    ok
+
+-- puts the current settings into the dialog before it's shown
+fill_dialog = ->
+    config_diag.main[k].value = v for k, v in pairs get_configuration!
+    return
 
 trim = (s) ->
     return "" unless s
@@ -153,10 +226,8 @@ process_line = (line, opts, state) ->
 
 main = (subs, sel) ->
     -- Load previous settings
-    if havedc
-        config\read!
-        config\updateInterface "main"
-        
+    fill_dialog!
+
     -- Prepare the table sequence for Aegisub's dialog
     dialog_elements = {}
     for key, values in pairs config_diag.main
@@ -172,14 +243,7 @@ main = (subs, sel) ->
         aegisub.cancel!
 
     -- Save new settings state
-    if havedc
-        config\updateConfiguration res, 'main'
-        config\write!
-        config\updateInterface 'main'
-    else
-        for k, v in pairs res
-            if config_diag.main[k]
-                config_diag.main[k].value = v
+    save_configuration res
 
     -- Shared state to track user cancelations in interactive mode
     state = { interactive_cancelled: false }

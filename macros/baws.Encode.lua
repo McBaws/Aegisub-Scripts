@@ -16,21 +16,19 @@ script_name = 'Encode'
 script_description = 'Encode clips, audio or image sequences from the current selection'
 script_author = 'McBaws'
 script_namespace = "baws.Encode"
-script_version = '2.1.0'
+script_version = '2.2.0'
 
 local haveDepCtrl, DependencyControl, depctrl = pcall(require, "l0.DependencyControl")
-local ConfigHandler, EncodeVS, config
+local EncodeVS
 if haveDepCtrl then
     depctrl = DependencyControl {
         feed="https://raw.githubusercontent.com/McBaws/Aegisub-Scripts/stable/DependencyControl.json",
         {
-            {"a-mo.ConfigHandler", version="1.1.4", url="https://github.com/TypesettingTools/Aegisub-Motion",
-             feed="https://raw.githubusercontent.com/TypesettingTools/Aegisub-Motion/DepCtrl/DependencyControl.json"},
             {"baws.EncodeVS", version="1.0.3", url="https://github.com/McBaws/Aegisub-Scripts",
              feed="https://raw.githubusercontent.com/McBaws/Aegisub-Scripts/stable/DependencyControl.json"}
         }
     }
-    ConfigHandler, EncodeVS = depctrl:requireModules()
+    EncodeVS = depctrl:requireModules()
 else
     local ok, mod = pcall(require, "baws.EncodeVS")
     if ok then EncodeVS = mod end
@@ -44,51 +42,44 @@ local AUDIO_CODECS = {"Opus", "FLAC", "AAC"}
 local AUDIO_EXT = {Opus="opus", FLAC="flac", AAC="m4a"}
 local INDEXERS = {"Auto", "LWI", "FFMS2", "BestSource"}
 
--- ConfigHandler requires the schema to be structured exactly like Aegisub dialog elements
-local config_schema = {
+local DEFAULTS = {
     video = {
-        audio = {class="checkbox", value=true, config=true},
-        subs = {class="checkbox", value=true, config=true},
-        sub_mode = {class="dropdown", value="Softsub", config=true},
-        codec = {class="dropdown", value="x264 (AVC)", config=true},
-        crf = {class="floatedit", value=-1, config=true},
-        target_kb = {class="intedit", value=0, config=true},
-        height = {class="intedit", value=0, config=true},
-        bitdepth = {class="dropdown", value="Source", config=true},
-        fps = {class="edit", value="", config=true},
-        audio_codec = {class="dropdown", value="Opus", config=true},
-        audio_bitrate = {class="intedit", value=192, config=true},
-        use_aid = {class="checkbox", value=false, config=true},
-        aid = {class="intedit", value=1, config=true},
-        square = {class="checkbox", value=false, config=true}
+        audio = true,
+        subs = true,
+        sub_mode = "Softsub",
+        codec = "x264 (AVC)",
+        crf = -1,
+        target_kb = 0,
+        height = 0,
+        bitdepth = "Source",
+        fps = "",
+        audio_codec = "Opus",
+        audio_bitrate = 192,
+        use_aid = false,
+        aid = 1,
+        square = false
     },
     audio = {
-        audio_codec = {class="dropdown", value="Opus", config=true},
-        audio_bitrate = {class="intedit", value=192, config=true},
-        use_aid = {class="checkbox", value=false, config=true},
-        aid = {class="intedit", value=1, config=true}
+        audio_codec = "Opus",
+        audio_bitrate = 192,
+        use_aid = false,
+        aid = 1
     },
     images = {
-        subs = {class="checkbox", value=false, config=true},
-        image_format = {class="dropdown", value="jpg", config=true},
-        quality = {class="intedit", value=95, config=true}
+        subs = false,
+        image_format = "jpg",
+        quality = 95
     },
     main = {
-        python_exe = {class="edit", value="", config=true},
-        ffmpeg_exe = {class="edit", value="", config=true},
-        indexer = {class="dropdown", value="Auto", config=true},
-        output_path = {class="edit", value="$scriptdir$", config=true},
-        filename = {class="edit", value="$video$ [$sframe$-$eframe$]", config=true},
-        keep_track_names = {class="checkbox", value=true, config=true},
-        name_subs_after_script = {class="checkbox", value=false, config=true}
+        python_exe = "",
+        ffmpeg_exe = "",
+        indexer = "Auto",
+        output_path = "$scriptdir$",
+        filename = "[$sframe$-$eframe$] $video$",
+        keep_track_names = true,
+        name_subs_after_script = false
     }
 }
-
-local DEFAULTS = {}
-for section, entries in pairs(config_schema) do
-    DEFAULTS[section] = {}
-    for k, v in pairs(entries) do DEFAULTS[section][k] = v.value end
-end
 
 local function defaults(section)
     local c = {}
@@ -96,32 +87,95 @@ local function defaults(section)
     return c
 end
 
+-- settings only keep what differs from the defaults, so changing a default later still reaches people
+-- each section gets its own handler under "settings" in the file
+-- without depctrl they just live in here until aegisub closes
+local config, session = {}, {}
+for section in pairs(DEFAULTS) do session[section] = {} end
+
+local function store_settings(section, store)
+    local view = config[section]
+    if not view then
+        session[section] = store
+        return true
+    end
+    -- depctrl 0.6 only ever adds keys when it writes, so clear the section first or old values stick around
+    local ok, err = view:delete()
+    if not ok then return ok, err end
+    if next(store) == nil then return true end
+    for k, v in pairs(store) do view.c[k] = v end
+    return view:write()
+end
+
 if haveDepCtrl then
-    config = ConfigHandler(config_schema, depctrl.configFile, false, script_version, depctrl.configDir)
+    for section, defs in pairs(DEFAULTS) do
+        config[section] = depctrl:getConfigHandler(defs, {"settings", section})
+    end
+
+    -- a-mo saved to <depctrl configDir>/<configFile>. newer depctrl doesn't expose configDir on the
+    -- script's record, so there a-mo fell back to ?user, older depctrl gives ?user/config. check them all
+    local function find_old_config()
+        local okjson, json = pcall(require, "json")
+        if not okjson then json = require("l0.dkjson") end
+        local name = depctrl.configFile or (script_namespace .. ".json")
+        local seen = {}
+        for _, dir in ipairs({depctrl.configDir or "?user", "?user", "?user/config"}) do
+            local path = aegisub.decode_path(dir .. "/" .. name)
+            local f = not seen[path] and io.open(path, "r")
+            seen[path] = true
+            if f then
+                local text = f:read("*a")
+                f:close()
+                local ok, old = pcall(json.decode, text)
+                if ok and type(old) == "table" and old.__version ~= nil then return path, old end
+            end
+        end
+    end
+
+    -- one time move from the old a-mo file, which looks like {"main": {...}, "video": {...}, "__version": ...}
+    -- anything already saved with the new handler wins, the old values only fill in the rest
+    local path, old = find_old_config()
+    if path then
+        os.remove(path)
+        for section, defs in pairs(DEFAULTS) do
+            local was = type(old[section]) == "table" and old[section] or {}
+            local saved = config[section].userConfig or {}
+            local store = {}
+            for k, v in pairs(defs) do
+                if saved[k] ~= nil then
+                    store[k] = saved[k]
+                elseif was[k] ~= nil and was[k] ~= v then
+                    store[k] = was[k]
+                end
+            end
+            store_settings(section, store)
+        end
+    end
 end
 
 local function get_config(section)
-    if haveDepCtrl then
-        config:read()
-        config:updateInterface()
-    end
     local c = {}
-    for k, v in pairs(config_schema[section]) do
-        c[k] = v.value
+    for k, v in pairs(DEFAULTS[section]) do
+        if config[section] then
+            c[k] = config[section].c[k]
+        elseif session[section][k] ~= nil then
+            c[k] = session[section][k]
+        else
+            c[k] = v
+        end
     end
     return c
 end
 
+-- new values go over the current ones, anything the section doesn't know about is ignored
 local function update_config(section, new_values)
-    for k, v in pairs(new_values) do
-        if config_schema[section][k] then
-            config_schema[section][k].value = v
-        end
+    local store = {}
+    for k, v in pairs(get_config(section)) do
+        if new_values[k] ~= nil then v = new_values[k] end
+        if v ~= DEFAULTS[section][k] then store[k] = v end
     end
-    if haveDepCtrl then
-        config:updateConfiguration(new_values, section)
-        config:write()
-    end
+    local ok, err = store_settings(section, store)
+    if not ok then aegisub.log(2, "Couldn't save the settings: " .. tostring(err) .. "\n") end
 end
 
 local function strip_slash(p)

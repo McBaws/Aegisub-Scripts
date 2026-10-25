@@ -6,9 +6,7 @@
   "fileBaseUrl": "https://raw.githubusercontent.com/McBaws/Aegisub-Scripts",
   "url": "@{baseUrl}",
   "maintainer": "McBaws",
-  "knownFeeds": {
-    "a-mo": "https://raw.githubusercontent.com/TypesettingTools/Aegisub-Motion/DepCtrl/DependencyControl.json"
-  },
+  "knownFeeds": {},
   "macros": {
     "baws.PlainerText": {
       "fileBaseUrl": "@{fileBaseUrl}/@{channel}/macros/@{namespace}",
@@ -18,23 +16,14 @@
       "description": "Clean up and export script as plaintext",
       "channels": {
         "stable": {
-          "version": "1.0.1",
-          "released": "2026-03-19",
+          "version": "1.1.0",
+          "released": "2026-10-25",
           "default": true,
           "files": [
             {
               "name": ".moon",
               "url": "@{fileBaseUrl}@{fileName}",
-              "sha1": "4bedf5a90180393af72be798aa783cbb350892c0"
-            }
-          ],
-          "requiredModules": [
-            {
-              "moduleName": "a-mo.ConfigHandler",
-              "name": "ConfigHandler",
-              "url": "https://github.com/TypesettingTools/Aegisub-Motion",
-              "version": "1.1.4",
-              "feed": "@{feed:a-mo}"
+              "sha1": "606ab6430560d46f56613806801d6eb073b02356"
             }
           ]
         }
@@ -45,6 +34,9 @@
         ],
         "1.0.1": [
           "Fix line endings"
+        ],
+        "1.1.0": [
+          "Switch to DependencyControl's built-in config handler, existing settings carry over automatically"
         ]
       }
     },
@@ -56,23 +48,14 @@
       "description": "Detects scenebleeds and marks them with an effect",
       "channels": {
         "stable": {
-          "version": "1.1.0",
-          "released": "2026-03-20",
+          "version": "1.2.0",
+          "released": "2026-10-25",
           "default": true,
           "files": [
             {
               "name": ".lua",
               "url": "@{fileBaseUrl}@{fileName}",
-              "sha1": "6efe1e30eb28d651cf1db3d46ee258882afca6e5"
-            }
-          ],
-          "requiredModules": [
-            {
-              "moduleName": "a-mo.ConfigHandler",
-              "name": "ConfigHandler",
-              "url": "https://github.com/TypesettingTools/Aegisub-Motion",
-              "version": "1.1.4",
-              "feed": "@{feed:a-mo}"
+              "sha1": "869e389f18d7ccddeb6781acdd659bafccd4be09"
             }
           ]
         }
@@ -83,6 +66,9 @@
         ],
         "1.1.0": [
           "Fix detection for tightly packed keyframes"
+        ],
+        "1.2.0": [
+          "Switch to DependencyControl's built-in config handler, existing settings carry over automatically"
         ]
       }
     },
@@ -94,23 +80,14 @@
       "description": "Change all your normal quotes, ellipses, and dashes into smart ones",
       "channels": {
         "stable": {
-          "version": "1.0.0",
-          "released": "2026-07-20",
+          "version": "1.1.0",
+          "released": "2026-10-25",
           "default": true,
           "files": [
             {
               "name": ".moon",
               "url": "@{fileBaseUrl}@{fileName}",
-              "sha1": "45446a7c5bf22e9a560b4b019eada4843e3f7c52"
-            }
-          ],
-          "requiredModules": [
-            {
-              "moduleName": "a-mo.ConfigHandler",
-              "name": "ConfigHandler",
-              "url": "https://github.com/TypesettingTools/Aegisub-Motion",
-              "version": "1.1.4",
-              "feed": "@{feed:a-mo}"
+              "sha1": "66982e3c1240d1d949dee833d5a6e754108b98e7"
             }
           ]
         }
@@ -118,6 +95,9 @@
       "changelog": {
         "1.0.0": [
           "Initial release"
+        ],
+        "1.1.0": [
+          "Switch to DependencyControl's built-in config handler, existing settings carry over automatically"
         ]
       }
     },
@@ -129,29 +109,22 @@
       "description": "Encode clips, audio or image sequences from the selected lines, frame-exact via VapourSynth.",
       "channels": {
         "stable": {
-          "version": "2.1.0",
-          "released": "2026-10-07",
+          "version": "2.2.0",
+          "released": "2026-10-25",
           "default": true,
           "files": [
             {
               "name": ".lua",
               "url": "@{fileBaseUrl}@{fileName}",
-              "sha1": "ac33ac9e9a9e76164da4a8f31575392ba7619e64"
+              "sha1": "2740bc3dfea064e529a3560da72d1ba6fd0708fc"
             }
           ],
           "requiredModules": [
             {
-              "moduleName": "a-mo.ConfigHandler",
-              "name": "ConfigHandler",
-              "url": "https://github.com/TypesettingTools/Aegisub-Motion",
-              "version": "1.1.4",
-              "feed": "@{feed:a-mo}"
-            },
-            {
               "moduleName": "baws.EncodeVS",
               "name": "EncodeVS",
               "url": "https://github.com/McBaws/Aegisub-Scripts",
-              "version": "1.0.0"
+              "version": "1.0.3"
             }
           ]
         }
@@ -177,6 +150,35 @@
         ],
         "2.1.0": [
           "Allow hardsubbing image sequence, improve filename preview, add save and cancel button"
+        ],
+        "2.2.0": [
+          "Switch to DependencyControl's built-in config handler, existing settings carry over automatically"
+        ]
+      }
+    },
+    "baws.AutoSwapper": {
+      "fileBaseUrl": "@{fileBaseUrl}/@{channel}/macros/@{namespace}",
+      "url": "@{baseUrl}#@{namespace}",
+      "author": "McBaws",
+      "name": "AutoSwapper",
+      "description": "Insert muxtools autoswapper markers and run the swap",
+      "channels": {
+        "stable": {
+          "version": "1.0.0",
+          "released": "2026-10-25",
+          "default": true,
+          "files": [
+            {
+              "name": ".lua",
+              "url": "@{fileBaseUrl}@{fileName}",
+              "sha1": "79904d88a0d0c531c3293de2fe5e2be1abc13b9e"
+            }
+          ]
+        }
+      },
+      "changelog": {
+        "1.0.0": [
+          "Initial release"
         ]
       }
     }

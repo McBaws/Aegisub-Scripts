@@ -15,20 +15,15 @@
 script_name = "SceneBleed"
 script_description = "Detects scenebleeds and marks them with an effect"
 script_author = "McBaws"
-script_version = "1.1.0"
+script_version = "1.2.0"
 script_namespace = "baws.SceneBleed"
 
 local havedc, DependencyControl = pcall(require, "l0.DependencyControl")
-local dep, ConfigHandler, config
+local dep
 if havedc then
     dep = DependencyControl{
         feed = "https://raw.githubusercontent.com/McBaws/Aegisub-Scripts/stable/DependencyControl.json",
-        {
-            {"a-mo.ConfigHandler", version = "1.1.4", url = "https://github.com/TypesettingTools/Aegisub-Motion",
-             feed = "https://raw.githubusercontent.com/TypesettingTools/Aegisub-Motion/DepCtrl/DependencyControl.json"},
-        }
     }
-    ConfigHandler = dep:requireModules()
 end
 
 re = require('aegisub.re')
@@ -56,44 +51,103 @@ local config_diag = {
     }
 }
 
+-- defaults come straight from the dialog, grabbed before anything changes its values
+local DEFAULTS = {}
+for key, values in pairs(config_diag.main) do
+    if values.config then DEFAULTS[key] = values.value end
+end
+
+-- settings only keep what differs from the defaults, so changing a default later still reaches people
+-- without dep they just live in here until aegisub closes
+local config, session = nil, {}
+
+local function store_settings(store)
+    if not config then
+        session = store
+        return true
+    end
+    -- dep 0.6 only ever adds keys when it writes, so clear the section first or old values stick around
+    local ok, err = config:delete()
+    if not ok then return ok, err end
+    if next(store) == nil then return true end
+    for k, v in pairs(store) do config.c[k] = v end
+    return config:write()
+end
+
 if havedc then
-    config = ConfigHandler(config_diag, dep.configFile, false, script_version, dep.configDir)
+    config = dep:getConfigHandler(DEFAULTS, "settings")
+
+    -- a-mo saved to <depctrl configDir>/<configFile>. newer depctrl doesn't expose configDir on the
+    -- script's record, so there a-mo fell back to ?user, older depctrl gives ?user/config. check them all
+    local function find_old_config()
+        local okjson, json = pcall(require, "json")
+        if not okjson then json = require("l0.dkjson") end
+        local name = dep.configFile or (script_namespace .. ".json")
+        local seen = {}
+        for _, dir in ipairs({dep.configDir or "?user", "?user", "?user/config"}) do
+            local path = aegisub.decode_path(dir .. "/" .. name)
+            local f = not seen[path] and io.open(path, "r")
+            seen[path] = true
+            if f then
+                local text = f:read("*a")
+                f:close()
+                local ok, old = pcall(json.decode, text)
+                if ok and type(old) == "table" and old.__version ~= nil then return path, old end
+            end
+        end
+    end
+
+    -- one time move from the old a-mo file, which looks like {"main": {...}, "__version": ...}
+    -- anything already saved with the new handler wins, the old values only fill in the rest
+    local path, old = find_old_config()
+    if path then
+        local main = type(old.main) == "table" and old.main or {}
+        local store = {}
+        for k, v in pairs(DEFAULTS) do
+            local now = config.userConfig and config.userConfig[k]
+            if now ~= nil then
+                store[k] = now
+            elseif main[k] ~= nil and main[k] ~= v then
+                store[k] = main[k]
+            end
+        end
+        os.remove(path)
+        store_settings(store)
+    end
 end
 
 local function get_configuration()
-    if havedc then
-        config:read()
-        config:updateInterface("main")
-    end
-    local opts = {}
-    for key, values in pairs(config_diag.main) do
-        if values.config then
-            opts[key] = values.value
+    local c = {}
+    for k, v in pairs(DEFAULTS) do
+        if config then
+            c[k] = config.c[k]
+        elseif session[k] ~= nil then
+            c[k] = session[k]
+        else
+            c[k] = v
         end
     end
-    return opts
+    return c
+end
+
+-- new values go over the current ones, anything the script doesn't know about is ignored
+local function save_configuration(new)
+    local store = {}
+    for k, v in pairs(get_configuration()) do
+        if new[k] ~= nil then v = new[k] end
+        if v ~= DEFAULTS[k] then store[k] = v end
+    end
+    return store_settings(store)
 end
 
 local function show_config_dialog()
-    if havedc then
-        config:read()
-        config:updateInterface("main")
-        local button, result = aegisub.dialog.display(config_diag.main)
-        if button then
-            config:updateConfiguration(result, 'main')
-            config:write()
-            config:updateInterface('main')
-        end
-    else
-        -- Fallback if no DependencyControl: show dialog and keep stored while program running
-        local button, result = aegisub.dialog.display(config_diag.main)
-        if button then
-            for k, v in pairs(result) do
-                if config_diag.main[k] then
-                    config_diag.main[k].value = v
-                end
-            end
-        end
+    for k, v in pairs(get_configuration()) do
+        config_diag.main[k].value = v
+    end
+    local button, result = aegisub.dialog.display(config_diag.main)
+    if button then
+        local ok, err = save_configuration(result)
+        if not ok then aegisub.log(2, "Couldn't save the settings: " .. tostring(err) .. "\n") end
     end
 end
 
