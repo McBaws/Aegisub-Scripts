@@ -23,10 +23,11 @@ It can insert the swap markers for you based on what you have selected, and it c
 **Insert Markers** works on the text you have selected in the edit box:
 - Enable: shown now, hidden after swapping
 - Disable: hidden now, shown after swapping
-- AB Swap: asks what the text should turn into after swapping, or uses selection if you have normal text followed by a "Disable" swap selected
+- AB Swap: asks what the text should turn into after swapping
 - Entire Line: toggles the line marker, so the whole line gets commented or uncommented when swapping
 
-Tags are carried over too, so you don't have to write them yourself (eg. `[/i1]`).
+Tags are carried over too, so you don't have to write them yourself (eg. `[/i1]`). \
+If you select some normal text followed by a Disable Swap and insert an AB Swap, it will turn them into an AB swap without asking.
 
 Original:
 ```
