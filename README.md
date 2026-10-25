@@ -2,6 +2,7 @@
 
 [AutoSwapper](#autoswapper) \
 [Encode](#encode) \
+[MoveToPos](#movetopos) \
 [PlainerText](#plainertext) \
 [SceneBleed](#scenebleed) \
 [Smartify](#smartify)
@@ -72,6 +73,11 @@ You can install them with this command:
 ```bash
 pip install "vsjetpack[full]" muxtools vsmuxtools --extra-index-url https://jaded-encoding-thaumaturgy.github.io/vs-wheels/simple
 ```
+
+### MoveToPos
+
+Converts `\move` to `\pos` on every selected line. \
+There's a macro for each end of the move: Beginning uses the position the move starts at, End uses the position it ends at.
 
 ### PlainerText
 

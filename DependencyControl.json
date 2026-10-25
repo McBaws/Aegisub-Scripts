@@ -184,6 +184,32 @@
           "Make tag preservation togglable"
         ]
       }
+    },
+    "baws.MoveToPos": {
+      "fileBaseUrl": "@{fileBaseUrl}/@{channel}/macros/@{namespace}",
+      "url": "@{baseUrl}#@{namespace}",
+      "author": "McBaws",
+      "name": "MoveToPos",
+      "description": "Converts move to pos on selected lines",
+      "channels": {
+        "stable": {
+          "version": "1.0.0",
+          "released": "2026-10-25",
+          "default": true,
+          "files": [
+            {
+              "name": ".lua",
+              "url": "@{fileBaseUrl}@{fileName}",
+              "sha1": "0526c808f6b628bc3ae11cc79acf47e15a051b6d"
+            }
+          ]
+        }
+      },
+      "changelog": {
+        "1.0.0": [
+          "Initial release"
+        ]
+      }
     }
   },
   "modules": {
