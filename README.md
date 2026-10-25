@@ -1,11 +1,56 @@
 # Aegisub-Scripts
 
+[AutoSwapper](#autoswapper) \
+[Encode](#encode) \
+[PlainerText](#plainertext) \
+[SceneBleed](#scenebleed) \
+[Smartify](#smartify)
+
 ### DependencyControl
 
 My scripts will use [DependencyControl](https://github.com/TypesettingTools/DependencyControl) for versioning and dependency management. \
 You should have this installed to receive automatic updates for my scripts.
 
 ## Scripts
+
+### AutoSwapper
+
+Inspired by [Honorary](https://github.com/petzku/Aegisub-Scripts/blob/master/macros/petzku.Honorary.moon).
+
+Helps you work with [muxtools' autoswapper](https://github.com/Jaded-Encoding-Thaumaturgy/muxtools), which is mostly used to make honorifics tracks. \
+It can insert the swap markers for you based on what you have selected, and it can run the swap itself so you can check what the other version of the script looks like.
+
+**Insert Markers** works on the text you have selected in the edit box:
+- Enable: shown now, hidden after swapping
+- Disable: hidden now, shown after swapping
+- AB Swap: asks what the text should turn into after swapping, or uses selection if you have normal text followed by a "Disable" swap selected
+- Entire Line: toggles the line marker, so the whole line gets commented or uncommented when swapping
+
+Tags are carried over too, so you don't have to write them yourself (eg. `[/i1]`).
+
+Original:
+```
+{\i1}Wow!{\i0}
+```
+Enable:
+```
+{*}{\i1}Wow!{\i0}{*}
+```
+Disable:
+```
+{**[/i1]Wow![/i0]}
+```
+AB Swap (with `{\b1}Cool?{\b0}`):
+```
+{*}{\i1}Wow!{\i0}{*[/b1]Cool?[/b0]}
+```
+
+**Apply Swap** can swap the entire script, the selected lines, or just the selected text. Swapping selected text only touches the markers your selection is part of, and if nothing is selected it swaps the selected lines instead.
+
+There's also a **Quick Menu** with everything in it, so you can bind one hotkey instead of a bunch of them. \
+You can change the styles to swap and the markers to use in the config. Just make sure they match what you use in your mux script.
+
+Inserting markers needs [arch1t3cht's Aegisub](https://github.com/arch1t3cht/Aegisub), swapping works in any version. This might get merged into main aegi soon? (hopeful)
 
 ### Encode
 
