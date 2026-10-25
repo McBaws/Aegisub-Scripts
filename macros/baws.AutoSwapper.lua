@@ -14,10 +14,10 @@
 -- OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 script_name = 'AutoSwapper'
-script_description = 'Insert muxtools autoswapper markers and run the swap'
+script_description = 'Create and swap between two versions of a script'
 script_author = 'McBaws'
 script_namespace = "baws.AutoSwapper"
-script_version = '1.0.0'
+script_version = '1.1.0'
 
 local haveDepCtrl, DependencyControl, depctrl = pcall(require, "l0.DependencyControl")
 if haveDepCtrl then
@@ -26,16 +26,14 @@ if haveDepCtrl then
     }
 end
 
--- keep this the same as what the mux script passes to autoswapper()
--- nil = muxtools default, braces just get stripped from hidden text
-local TAG_MARKERS = "[]"
-
 local DEFAULTS = {
     -- same list as muxtools' DEFAULT_DIALOGUE_STYLES
     styles = "default, main, alt, overlap, flashback, top, italics",
     exact_names = true,
     inline_marker = "*",
     line_marker = "***",
+    -- on = inline_tag_markers="[]" in muxtools, off = None (braces just get stripped from hidden text)
+    tag_markers = true,
 }
 
 -- settings only keep what differs from the defaults, so changing a default later still reaches people
@@ -151,12 +149,13 @@ local function message(text)
     aegisub.dialog.display({{class="label", label=amp(text), x=0, y=0}}, {"OK"})
 end
 
-local MARKER, LINE_MARKER, STYLES, EXACT_NAMES
+local MARKER, LINE_MARKER, STYLES, EXACT_NAMES, TAG_MARKERS
 local SHOW_PAT, EN_SEL, DIS_SEL, AB_SEL, CONV_SEL
 
 -- reads the config and rebuilds the patterns, every action calls this first
 local function load_settings()
     local c = get_config()
+    TAG_MARKERS = c.tag_markers and "[]" or nil
     MARKER = trim(c.inline_marker) ~= "" and trim(c.inline_marker) or "*"
     LINE_MARKER = trim(c.line_marker) ~= "" and trim(c.line_marker) or "***"
     EXACT_NAMES = c.exact_names
@@ -181,6 +180,9 @@ local function check_config(c)
     if c.inline_marker == "" then return "The inline marker can't be empty." end
     if c.inline_marker:find("[{}]") then return "The inline marker can't have { or } in it." end
     if c.line_marker == "" then return "The line marker can't be empty." end
+    if c.tag_markers and c.inline_marker:find("[%[%]]") then
+        return "The inline marker can't have [ or ] in it while tag markers are on."
+    end
 end
 
 local function show_config(vals)
@@ -196,6 +198,8 @@ local function show_config(vals)
             {class="edit", name="inline_marker", value=vals.inline_marker, x=1, y=2, hint="Should be one character, like the * in {*}...{*}"},
             {class="label", label="Line marker:", x=0, y=3},
             {class="edit", name="line_marker", value=vals.line_marker, x=1, y=3, hint="Put in the effect or actor field to comment/uncomment the whole line"},
+            {class="checkbox", name="tag_markers", label="Use [] tag markers", value=vals.tag_markers, x=1, y=4, width=3,
+             hint='Turns tags into [/i1] in hidden text so they survive being hidden. On = inline_tag_markers="[]" in your mux script.\nOff = muxtools\' default (None), braces just get stripped from hidden text. Use this for Flux and SubKt too.'},
         }, {"Save", "Reset Defaults", "Cancel"}, {ok="Save", cancel="Cancel"})
         if not btn then return end
         if btn == "Reset Defaults" then
@@ -227,6 +231,13 @@ local function hide(s)
     return replace(replace(s, "{", ""), "}", "")
 end
 
+-- hiding text while inserting markers. with tag markers off, whole tags go instead of just their
+-- braces, otherwise the leftover \i1 would still work inside the comment and show up as text later
+local function hide_insert(s)
+    if TAG_MARKERS then return hide(s) end
+    return hide((s:gsub("{[^}]*}", "")))
+end
+
 local function reveal(s)
     if TAG_MARKERS then
         local o, c = TAG_MARKERS:sub(1, 1), TAG_MARKERS:sub(2, 2)
@@ -236,10 +247,14 @@ local function reveal(s)
 end
 
 -- stuff like "and/or" or [brackets] doesn't survive hide -> reveal, so ask first
-local function roundtrip_ok(strs)
-    local msg = {"This won't come back exactly after swapping twice:"}
-    for _, s in ipairs(strs) do
-        local back = reveal(hide(s))
+-- each item is either text that gets hidden by the swap later, or {text, hide_insert} for text
+-- that gets hidden right now while inserting markers
+local function roundtrip_ok(items)
+    local msg = {"Tag delimiters [] and / will be mangled upon swap:"}
+    for _, item in ipairs(items) do
+        local s, hider = item, hide
+        if type(item) == "table" then s, hider = item[1], item[2] end
+        local back = reveal(hider(s))
         if s ~= "" and back ~= s then
             msg[#msg + 1] = clip(s) .. "  →  " .. clip(back)
         end
@@ -434,18 +449,20 @@ local function disable(s)
         local mid = "{" .. MARKER .. MARKER .. "}"
         return mid, #mid - 1
     end
-    local hidden = hide(s)
+    local hidden = hide_insert(s)
     if hidden == "" then
-        message("There's nothing left to hide once the braces are stripped.")
+        message("There's nothing left to hide once the tags are stripped.")
         return nil
     end
-    if not roundtrip_ok({s}) then return nil end
+    if not roundtrip_ok({{s, hide_insert}}) then return nil end
     local mid = "{" .. MARKER .. MARKER .. hidden .. "}"
     return mid, #mid
 end
 
-local B_HINT = TAG_MARKERS and "Type it like normal line text, tags and all, e.g. {\\b1}Mary-tan{\\b0}"
-    or "TAG_MARKERS is off, so any {} in here gets stripped"
+local function b_hint()
+    if TAG_MARKERS then return "Type it like normal line text, tags and all, e.g. {\\b1}Mary-tan{\\b0}" end
+    return "Tag markers are off, so any tags in here get stripped"
+end
 
 local function ask_b(a, prefill)
     local shown = a == "" and "(nothing, the text just gets inserted)" or a
@@ -454,7 +471,7 @@ local function ask_b(a, prefill)
         {class="label", label="Now:", x=0, y=1},
         {class="label", label=amp(clip(shown)), x=1, y=1},
         {class="label", label="After swap:", x=0, y=2},
-        {class="edit", name="b", value=prefill, x=1, y=2, hint=B_HINT},
+        {class="edit", name="b", value=prefill, x=1, y=2, hint=b_hint()},
     }, {"OK", "Cancel"}, {ok="OK", cancel="Cancel"})
     return btn and res.b
 end
@@ -475,12 +492,13 @@ local function ab(s)
         b = ask_b(a, a)
     end
     if not b then return nil end
-    local hidden = hide(b)
+    local hidden = hide_insert(b)
     if hidden == "" then
         message("The swapped in text can't be empty. Use Disable if you just want to hide it.")
         return nil
     end
-    if not roundtrip_ok({a, b}) then return nil end
+    -- a only gets hidden later by the swap, b gets hidden right now
+    if not roundtrip_ok({a, {b, hide_insert}}) then return nil end
     local mid = "{" .. MARKER .. "}" .. a .. "{" .. MARKER .. hidden .. "}"
     return mid, #mid
 end
@@ -622,7 +640,7 @@ local macros = {
     {"Insert Markers/Entire Line", "Toggle the line marker on the selected lines", toggle_lines},
     {"Quick Menu/Apply Swap", "Pick a swap action from a dialog", quick_swap},
     {"Quick Menu/Insert Markers", "Pick a marker to insert from a dialog", quick_insert},
-    {"Setup Config", "Styles and markers to use", function() show_config() end},
+    {"Settings", "Styles and markers to use", function() show_config() end},
 }
 
 if haveDepCtrl then

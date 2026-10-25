@@ -161,17 +161,17 @@
       "url": "@{baseUrl}#@{namespace}",
       "author": "McBaws",
       "name": "AutoSwapper",
-      "description": "Insert muxtools autoswapper markers and run the swap",
+      "description": "Create and swap between two versions of a script",
       "channels": {
         "stable": {
-          "version": "1.0.0",
+          "version": "1.1.0",
           "released": "2026-10-25",
           "default": true,
           "files": [
             {
               "name": ".lua",
               "url": "@{fileBaseUrl}@{fileName}",
-              "sha1": "79904d88a0d0c531c3293de2fe5e2be1abc13b9e"
+              "sha1": "86dce0fed5f900aed3993fea19fa28b498663181"
             }
           ]
         }
@@ -179,6 +179,9 @@
       "changelog": {
         "1.0.0": [
           "Initial release"
+        ],
+        "1.1.0": [
+          "Make tag preservation togglable"
         ]
       }
     }

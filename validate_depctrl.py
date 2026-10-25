@@ -12,7 +12,11 @@ DC_FILE = "DependencyControl.json"
 
 
 def get_version(lines):
-    version_line = [line for line in lines if "version" in line][0]
+    version_line = [line for line in lines if "script_version" in line]
+    if len(version_line) == 0:
+        version_line = [line for line in lines if "version" in line][0]
+    else:
+        version_line = version_line[0]
     return version_line.replace(":", "=").split("=")[1].strip().strip("'\",")
 
 
