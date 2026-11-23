@@ -5,7 +5,8 @@
 [MoveToPos](#movetopos) \
 [PlainerText](#plainertext) \
 [SceneBleed](#scenebleed) \
-[Smartify](#smartify)
+[Smartify](#smartify) \
+[SmartPaste](#smartpaste)
 
 ### DependencyControl
 
@@ -124,3 +125,45 @@ I asked her,\h“What about hard spaces?”
 and here is the end of it.”
 It don’t matter if we have contractions like we’re or they’ve.
 ```
+
+### SmartPaste
+
+Pastes text from your clipboard over the selected lines, but keeps their tags.
+
+**Paste** compares the old text and the new text word by word to decide where each tag goes:
+- Tags at the start of the line stay at the start. Tags at the end stay at the end.
+- If a word is in both texts, its tags stay with it.
+- If a word was changed, its tags move to the new word.
+- If you changed a whole sentence, tags after it go after the new sentence.
+- `\N` line breaks stay in the same place. If your new text has its own `\N`, those are used instead.
+
+Original:
+```
+{\an8}That's a lie! {\alpha&HFF&}You're wrong! {\i1}Wrong!{\i0}
+```
+Pasted `That's a lie! It's wrong! Wrong!`:
+```
+{\an8}That's a lie! {\alpha&HFF&}It's wrong! {\i1}Wrong!{\i0}
+```
+
+**Paste by Character** doesn't look at words. It just counts characters: a tag after the 3rd character of the old text goes after the 3rd character of the new text. Use it for lines with tags in the middle of words (like for gradients).
+
+Original:
+```
+I'm{\color1} go{\color2}ing{\color3} to{\color4}get
+```
+Pasted `I'm going out there`:
+```
+I'm{\color1} go{\color2}ing{\color3} ou{\color4}t there
+```
+
+If you copy one line, it gets pasted on every selected line. This is useful for signs with several layers. \
+If you copy several lines, each one goes on one selected line. If you only selected one line, they go on that line and the lines after it.
+
+If the text you copy starts with tags, they get added to the line's tags. If the line already has the same tag, the new one replaces it:
+```
+{\fad(0,200)}Hello!   +   {\i1}Hello!   =   {\fad(0,200)\i1}Hello!
+```
+
+Comments like `{TL note}` are kept in their own `{}`. \
+If the text you copy has tags anywhere else, it gets pasted exactly as is.
