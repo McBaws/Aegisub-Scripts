@@ -219,14 +219,14 @@
       "description": "Paste plain text over lines without losing their tags",
       "channels": {
         "stable": {
-          "version": "1.0.0",
-          "released": "2026-11-23",
+          "version": "1.1.0",
+          "released": "2026-11-28",
           "default": true,
           "files": [
             {
               "name": ".lua",
               "url": "@{fileBaseUrl}@{fileName}",
-              "sha1": "92ba2e87c057d6315fc911026eccba4be5c77c0a"
+              "sha1": "e32228c1c6b36ee3289aeac883b31e3e38b3f8b0"
             }
           ]
         }
@@ -234,6 +234,9 @@
       "changelog": {
         "1.0.0": [
           "Initial release"
+        ],
+        "1.1.0": [
+          "Recognize full event lines and only paste their text"
         ]
       }
     }

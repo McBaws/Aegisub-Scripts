@@ -16,7 +16,7 @@ script_name = "SmartPaste"
 script_description = "Paste plain text over lines without losing their tags"
 script_author = "McBaws"
 script_namespace = "baws.SmartPaste"
-script_version = "1.0.0"
+script_version = "1.1.0"
 
 local clipboard = require("aegisub.clipboard")
 
@@ -454,8 +454,23 @@ local function paste_plain(orig, new, by_char)
     return assemble(text, groups, offsets)
 end
 
+-- Dialogue: 0,0:12:11.00,0:12:14.21,Default,,0,0,0,,text
+-- layer, start, end, style, name, margin l/r/v, effect, then the text. none of the fields before the
+-- text can have commas in them, so the text is everything after the 9th one (commas and all)
+local TIME = "%s*%d+:%d+:%d+[%.:]%d+%s*"
+local MARGIN = "%s*%-?%d+%s*"
+local EVENT = "^%s*(%a+):%s*[^,]*," .. TIME .. "," .. TIME .. ",[^,]*,[^,]*,"
+    .. MARGIN .. "," .. MARGIN .. "," .. MARGIN .. ",[^,]*,(.*)$"
+
+-- if a whole event line got copied (like copying rows in aegisub), just take its text
+local function event_text(s)
+    local kind, text = s:match(EVENT)
+    if kind == "Dialogue" or kind == "Comment" then return text end
+    return s
+end
+
 local function paste(orig, new, by_char)
-    new = trim(new)
+    new = trim(event_text(new))
     local blocks, rest = leading_blocks(new)
     -- tags past the start mean it's already been typeset, so whatever's pasted is what you want
     if rest:find("{[^}]*}") then return new end

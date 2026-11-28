@@ -158,7 +158,8 @@ I'm{\color1} go{\color2}ing{\color3} ou{\color4}t there
 ```
 
 If you copy one line, it gets pasted on every selected line. This is useful for signs with several layers. \
-If you copy several lines, each one goes on one selected line. If you only selected one line, they go on that line and the lines after it.
+If you copy several lines, each one goes on one selected line. If you only selected one line, they go on that line and the lines after it. \
+You can also copy whole lines from Aegisub or a .ass file (`Dialogue: 0,0:12:11.00,...`). Only the text part gets pasted.
 
 If the text you copy starts with tags, they get added to the line's tags. If the line already has the same tag, the new one replaces it:
 ```
